@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    buildCommand: npm install --omit=optional
+    buildCommand: npm install
     startCommand: node collector.js
     healthCheckPath: /health
     envVars:
