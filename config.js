@@ -1,8 +1,8 @@
 // config.js — projenin tek merkezi ayar dosyasi.
 const path = require('path');
-const os = require('os');
 
-const ROOT = path.join(os.homedir(), 'sahibinden-bursa-emlak');
+// ROOT = bu dosyanın bulunduğu klasör (repo kökü). Hem yerelde hem Render'da doğru çalışır.
+const ROOT = __dirname;
 
 module.exports = {
   ROOT,
