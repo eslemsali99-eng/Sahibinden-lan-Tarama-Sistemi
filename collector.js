@@ -110,8 +110,9 @@ async function handle(req, res) {
     const total = num((await get('SELECT COUNT(*) c FROM listings')).c);
     sendJSON(res, 200, { ok: true, processed: recs.length, fresh: fresh.length, drops: drops.length, total });
     console.log(`+${recs.length} (${meta.district}/${meta.categoryTxn}) yeni:${fresh.length} düşüş:${drops.length} -> DB ${total}`);
-    if (fresh.length) notifier.notifyNew(fresh).catch(() => {});
-    if (drops.length) notifier.notifyPriceDrops(drops).catch(() => {});
+    // toplu (bulk) taramada bildirim atma — sadece 7/24 oto'daki gerçek yeni ilanlar bildirsin
+    if (fresh.length && !meta.bulk) notifier.notifyNew(fresh).catch(() => {});
+    if (drops.length && !meta.bulk) notifier.notifyPriceDrops(drops).catch(() => {});
     return;
   }
 

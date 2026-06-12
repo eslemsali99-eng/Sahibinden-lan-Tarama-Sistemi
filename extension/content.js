@@ -62,7 +62,8 @@
     let grand = 0;
     for (const d of DISTRICTS) {
       if (done.includes(d.name)) { log(`↷ ${d.name} zaten tamam, atlandı`, '#888'); continue; }
-      const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden' };
+      // bulk:true -> toplu tarama; sunucu bildirim ATMAZ (WhatsApp/Telegram seli olmasın)
+      const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden', bulk: true };
       log(`▶ ${d.name} ...`, '#ff0');
       let got = 0, blocked = false;
       for (let p = 0; p < MAX_PAGES; p++) {
