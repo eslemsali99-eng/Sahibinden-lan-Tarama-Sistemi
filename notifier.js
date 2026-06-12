@@ -22,11 +22,24 @@ async function sendTelegram(token, chatId, text) {
     });
   } catch (e) { console.log('[notify] telegram hata:', e.message); }
 }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// CallMeBot HTML desteklemez -> Telegram etiketlerini temizle, düz metne çevir
+function htmlToPlain(t) {
+  return String(t).replace(/<\/?[a-z][^>]*>/gi, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
 async function sendWhatsApp(phone, apikey, text) {
   try {
     const u = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${apikey}`;
-    await fetch(u);
+    const r = await fetch(u);
+    const body = await r.text().catch(() => '');
+    if (!/queued|success|will receive/i.test(body)) console.log(`[notify] whatsapp ${phone} başarısız:`, body.slice(0, 140));
   } catch (e) { console.log('[notify] whatsapp hata:', e.message); }
+}
+// CallMeBot rate-limit: TÜM WhatsApp gönderimleri tek kuyrukta, SIRAYLA + 2sn aralıkla
+let waChain = Promise.resolve();
+function queueWhatsApp(phone, apikey, text) {
+  waChain = waChain.then(() => sendWhatsApp(phone, apikey, text)).then(() => sleep(2200));
+  return waChain;
 }
 
 // genel mesaj
@@ -35,7 +48,9 @@ async function send(text) {
   if (!c.enabled) return;
   const jobs = [];
   if (c.telegram && c.telegram.token) for (const id of (c.telegram.chatIds || [])) jobs.push(sendTelegram(c.telegram.token, id, text));
-  for (const w of (c.whatsapp || [])) if (w.phone && w.apikey) jobs.push(sendWhatsApp(w.phone, w.apikey, text));
+  // WhatsApp: düz metin + kuyrukta sırayla (Telegram'a giden her şey WP'a da gider)
+  const plain = htmlToPlain(text);
+  for (const w of (c.whatsapp || [])) if (w.phone && w.apikey) queueWhatsApp(w.phone, w.apikey, plain);
   await Promise.allSettled(jobs);
 }
 
