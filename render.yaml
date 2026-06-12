@@ -1,0 +1,22 @@
+# Render Blueprint — Bircan Akın CRM (ekip paneli, 7/24 bulut)
+# Deploy: render.com -> New -> Blueprint -> bu repoyu seç. Env değerlerini panelde gir.
+services:
+  - type: web
+    name: bircan-emlak-crm
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install --omit=optional
+    startCommand: node collector.js
+    healthCheckPath: /health
+    envVars:
+      - key: TURSO_URL
+        sync: false
+      - key: TURSO_TOKEN
+        sync: false
+      - key: TEAM_PASS
+        sync: false
+      - key: INGEST_TOKEN
+        sync: false
+      - key: NOTIFY_JSON
+        sync: false

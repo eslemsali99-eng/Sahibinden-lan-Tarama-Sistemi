@@ -6,6 +6,10 @@ const cfg = require('./config');
 
 const NOTIFY_FILE = path.join(cfg.OUTPUT_DIR, 'notify.json');
 function load() {
+  // Render/bulut: tüm config NOTIFY_JSON env değişkeninden; yerel: output/notify.json
+  if (process.env.NOTIFY_JSON) {
+    try { return JSON.parse(process.env.NOTIFY_JSON); } catch {}
+  }
   try { return JSON.parse(fs.readFileSync(NOTIFY_FILE, 'utf8')); }
   catch { return { enabled: false, telegram: { token: '', chatIds: [] }, whatsapp: [] }; }
 }

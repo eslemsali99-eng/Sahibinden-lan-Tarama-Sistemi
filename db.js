@@ -1,114 +1,93 @@
-// db.js — SQLite (better-sqlite3) sema + yardimcilar. CRM'in kalbi.
-const Database = require('better-sqlite3');
-const { DB_PATH } = require('./config');
+// db.js — Turso (libSQL) async şema + yardımcılar. CRM'in kalbi.
+// TURSO_URL + TURSO_TOKEN env varsa buluta (kalıcı, ekip senkron) bağlanır;
+// yoksa yerel dosyaya (file:output/emlak.db) düşer — geliştirme için.
+const { createClient } = require('@libsql/client');
+const cfg = require('./config');
 
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+const url = process.env.TURSO_URL || ('file:' + cfg.DB_PATH);
+const authToken = process.env.TURSO_TOKEN || undefined;
+const client = createClient(authToken ? { url, authToken } : { url });
+const REMOTE = !!process.env.TURSO_URL;
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS listings (
-  id              TEXT PRIMARY KEY,         -- sahibinden ilan no
-  url             TEXT,                     -- direkt ilan linki
-  title           TEXT,
-  price           INTEGER,                  -- TL
-  currency        TEXT DEFAULT 'TL',
-  district        TEXT,                     -- ilce (Nilüfer vb.)
-  neighborhood    TEXT,                     -- mahalle
-  category        TEXT,                     -- Satılık / Kiralık
-  property_type   TEXT,                     -- Daire / Arsa / Işyeri vb.
-  seller_type     TEXT,                     -- 'sahibinden' | 'emlakci' (kimden)
-  seller_name     TEXT,                     -- ev sahibi adi veya ofis adi
-  ownership_type  TEXT,                     -- sahiplik/tapu turu (Kat Mülkiyetli vb.)
-  phone           TEXT,                     -- iletisim
-  listing_date    TEXT,                     -- ilan tarihi (YYYY-MM-DD)
-  days_on_site    INTEGER,                  -- yas (gun)
-  rooms           TEXT,                     -- oda sayisi (3+1 vb.)
-  area_m2         INTEGER,                  -- m2 (brüt/net)
-  image_url       TEXT,                     -- en anlamli kapak gorseli (CDN URL)
-  first_seen      TEXT,                     -- bizim ilk gordugumuz an (ISO)
-  last_seen       TEXT,                     -- son gordugumuz an (ISO)
-  is_active       INTEGER DEFAULT 1,        -- son turda hala yayinda mi
-  raw_json        TEXT                      -- ham veri yedegi
-);
-CREATE INDEX IF NOT EXISTS idx_seller   ON listings(seller_type);
-CREATE INDEX IF NOT EXISTS idx_district ON listings(district);
-CREATE INDEX IF NOT EXISTS idx_days     ON listings(days_on_site);
-CREATE INDEX IF NOT EXISTS idx_active   ON listings(is_active);
+// --- ince sorgu yardımcıları (better-sqlite3 yerine) ---
+async function all(sql, args = []) { return (await client.execute({ sql, args })).rows; }
+async function get(sql, args = []) { return (await client.execute({ sql, args })).rows[0] || null; }
+async function run(sql, args = []) { return client.execute({ sql, args }); }
+async function batchWrite(stmts) { if (stmts.length) await client.batch(stmts, 'write'); }
 
--- her tur kaydi (audit / saglik takibi)
-CREATE TABLE IF NOT EXISTS runs (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  started_at    TEXT,
-  finished_at   TEXT,
-  found         INTEGER DEFAULT 0,
-  new_count     INTEGER DEFAULT 0,
-  updated_count INTEGER DEFAULT 0,
-  status        TEXT,                       -- ok | blocked | error
-  note          TEXT
-);
-`);
+const DDL = [
+  `CREATE TABLE IF NOT EXISTS listings (
+    id TEXT PRIMARY KEY, url TEXT, title TEXT, price INTEGER, currency TEXT DEFAULT 'TL',
+    district TEXT, neighborhood TEXT, category TEXT, property_type TEXT,
+    seller_type TEXT, seller_name TEXT, ownership_type TEXT, phone TEXT,
+    listing_date TEXT, days_on_site INTEGER, rooms TEXT, area_m2 INTEGER, image_url TEXT,
+    first_seen TEXT, last_seen TEXT, is_active INTEGER DEFAULT 1, raw_json TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_seller   ON listings(seller_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_district ON listings(district)`,
+  `CREATE INDEX IF NOT EXISTS idx_days     ON listings(days_on_site)`,
+  `CREATE INDEX IF NOT EXISTS idx_active   ON listings(is_active)`,
+  `CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT, finished_at TEXT,
+    found INTEGER DEFAULT 0, new_count INTEGER DEFAULT 0, updated_count INTEGER DEFAULT 0,
+    status TEXT, note TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS inquiries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, name TEXT, phone TEXT, email TEXT,
+    message TEXT, lang TEXT, item_ids TEXT, handled INTEGER DEFAULT 0
+  )`,
+];
 
-// --- migrasyon: CRM + portfoy alanlari (mevcut tabloya ekle) ---
-const cols = db.prepare('PRAGMA table_info(listings)').all().map((c) => c.name);
-const addCol = (name, def) => { if (!cols.includes(name)) db.exec(`ALTER TABLE listings ADD COLUMN ${name} ${def}`); };
-addCol('status', "TEXT DEFAULT 'Yeni'");      // Yeni | Arandı | İzin Verdi | Reddetti | Ulaşılamadı
-addCol('notes', 'TEXT');
-addCol('assignee', 'TEXT');                    // arayan ekip uyesi
-addCol('shared', 'INTEGER DEFAULT 0');         // 1 = musteri portfoyune dustu (izinli)
-addCol('consent_date', 'TEXT');
-addCol('verified_owner', 'INTEGER');           // detay-dogrulama: 1 ev sahibi, 0 emlakci, null bilinmiyor
-addCol('removed', 'INTEGER DEFAULT 0');        // 1 = sahibinden'den kaldirildi (yayindan kalkti)
-addCol('removed_date', 'TEXT');                // kaldirildigi tespit tarihi
-addCol('verify_status', 'TEXT');               // Teyit Bekliyor | Satıldı | Vazgeçti | Hâlâ Satıyor | Ulaşılamadı
-addCol('last_check', 'TEXT');                  // son aktiflik kontrol tarihi
+// CRM + portföy alanları (mevcut tabloya ekle — migrasyon)
+const EXTRA_COLS = [
+  ['status', "TEXT DEFAULT 'Yeni'"], ['notes', 'TEXT'], ['assignee', 'TEXT'],
+  ['shared', 'INTEGER DEFAULT 0'], ['consent_date', 'TEXT'], ['verified_owner', 'INTEGER'],
+  ['removed', 'INTEGER DEFAULT 0'], ['removed_date', 'TEXT'], ['verify_status', 'TEXT'], ['last_check', 'TEXT'],
+];
 
-// musteri talepleri (sepet/sürec baslat)
-db.exec(`CREATE TABLE IF NOT EXISTS inquiries (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  created_at TEXT, name TEXT, phone TEXT, email TEXT, message TEXT,
-  lang TEXT, item_ids TEXT, handled INTEGER DEFAULT 0
-);`);
+let ready = null;
+async function init() {
+  if (ready) return ready;
+  ready = (async () => {
+    for (const sql of DDL) await client.execute(sql);
+    const info = await client.execute('PRAGMA table_info(listings)');
+    const have = info.rows.map((c) => c.name);
+    for (const [name, def] of EXTRA_COLS) {
+      if (!have.includes(name)) await client.execute(`ALTER TABLE listings ADD COLUMN ${name} ${def}`);
+    }
+  })();
+  return ready;
+}
 
-const upsertStmt = db.prepare(`
-INSERT INTO listings (id, url, title, price, currency, district, neighborhood, category,
-  property_type, seller_type, seller_name, ownership_type, phone, listing_date, days_on_site,
-  rooms, area_m2, image_url, first_seen, last_seen, is_active, raw_json)
-VALUES (@id, @url, @title, @price, @currency, @district, @neighborhood, @category,
-  @property_type, @seller_type, @seller_name, @ownership_type, @phone, @listing_date, @days_on_site,
-  @rooms, @area_m2, @image_url, @now, @now, 1, @raw_json)
-ON CONFLICT(id) DO UPDATE SET
-  url=excluded.url, title=excluded.title, price=excluded.price, district=excluded.district,
-  neighborhood=excluded.neighborhood, category=excluded.category, property_type=excluded.property_type,
-  seller_type=excluded.seller_type, seller_name=excluded.seller_name,
-  ownership_type=COALESCE(excluded.ownership_type, listings.ownership_type),
-  phone=COALESCE(excluded.phone, listings.phone),
-  listing_date=excluded.listing_date, days_on_site=excluded.days_on_site,
-  rooms=excluded.rooms, area_m2=excluded.area_m2,
-  image_url=COALESCE(excluded.image_url, listings.image_url),
-  last_seen=excluded.last_seen, is_active=1, raw_json=excluded.raw_json
-`);
-
-function upsertListing(rec) {
+// upsert ifadesini (sql+args) üretir — collector bunları batch'leyebilir
+function upsertStatement(rec) {
   const now = new Date().toISOString();
-  upsertStmt.run({
+  const r = {
     currency: 'TL', neighborhood: null, property_type: null, seller_name: null,
     ownership_type: null, phone: null, rooms: null, area_m2: null, image_url: null, raw_json: null,
-    ...rec, now,
-  });
+    ...rec,
+  };
+  return {
+    sql: `INSERT INTO listings (id,url,title,price,currency,district,neighborhood,category,
+      property_type,seller_type,seller_name,ownership_type,phone,listing_date,days_on_site,
+      rooms,area_m2,image_url,first_seen,last_seen,is_active,raw_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+      ON CONFLICT(id) DO UPDATE SET
+        url=excluded.url, title=excluded.title, price=excluded.price, district=excluded.district,
+        neighborhood=excluded.neighborhood, category=excluded.category, property_type=excluded.property_type,
+        seller_type=excluded.seller_type, seller_name=excluded.seller_name,
+        ownership_type=COALESCE(excluded.ownership_type, listings.ownership_type),
+        phone=COALESCE(excluded.phone, listings.phone),
+        listing_date=excluded.listing_date, days_on_site=excluded.days_on_site,
+        rooms=excluded.rooms, area_m2=excluded.area_m2,
+        image_url=COALESCE(excluded.image_url, listings.image_url),
+        last_seen=excluded.last_seen, is_active=1, raw_json=excluded.raw_json`,
+    args: [String(r.id), r.url, r.title, r.price, r.currency, r.district, r.neighborhood, r.category,
+      r.property_type, r.seller_type, r.seller_name, r.ownership_type, r.phone, r.listing_date, r.days_on_site,
+      r.rooms, r.area_m2, r.image_url, now, now, r.raw_json],
+  };
 }
 
-// bir turun basinda tum kayitlari pasif isaretle; gorduklerimizi upsert tekrar aktif yapar.
-function markAllInactive() { db.prepare('UPDATE listings SET is_active = 0').run(); }
+async function upsertListing(rec) { await batchWrite([upsertStatement(rec)]); }
 
-function startRun() {
-  return db.prepare('INSERT INTO runs (started_at, status) VALUES (?, ?)')
-    .run(new Date().toISOString(), 'running').lastInsertRowid;
-}
-function finishRun(id, fields) {
-  db.prepare(`UPDATE runs SET finished_at=@finished_at, found=@found, new_count=@new_count,
-    updated_count=@updated_count, status=@status, note=@note WHERE id=@id`)
-    .run({ id, finished_at: new Date().toISOString(), found: 0, new_count: 0, updated_count: 0,
-      status: 'ok', note: '', ...fields });
-}
-
-module.exports = { db, upsertListing, markAllInactive, startRun, finishRun };
+module.exports = { client, init, all, get, run, batchWrite, upsertStatement, REMOTE };
