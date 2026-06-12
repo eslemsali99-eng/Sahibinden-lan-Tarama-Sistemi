@@ -23,8 +23,10 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px;padding:0 26px 60px;max-width:1400px;margin:0 auto}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(20,30,60,.05);transition:.15s}
   .card:hover{box-shadow:0 8px 26px rgba(20,30,60,.12);transform:translateY(-2px)}
-  .card .img{height:190px;background:#e9edf5 center/cover no-repeat;position:relative}
+  .card .img{height:190px;background:#e9edf5 center/cover no-repeat;position:relative;cursor:pointer}
   .tag{position:absolute;top:10px;inset-inline-start:10px;background:rgba(31,58,95,.92);color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .goext{position:absolute;top:10px;inset-inline-end:10px;background:rgba(255,255,255,.92);color:#1f3a5f;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+  .card .img:hover .goext{background:#e9c46a}
   .body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
   .price{font-size:20px;font-weight:800;color:var(--acc2)}
   .loc{color:var(--mut);font-size:13px}
@@ -63,6 +65,7 @@
   .sheet .actions button{flex:1;min-width:160px;padding:14px;border-radius:12px;border:none;font-weight:800;font-size:15px;cursor:pointer}
   .b-cart{background:var(--acc2);color:#fff}.b-cart.in{background:#2e7d32}
   .b-proc{background:var(--acc);color:#fff}
+  .sheet .actions .b-view{flex:1;min-width:160px;padding:14px;border-radius:12px;font-weight:800;font-size:15px;text-align:center;text-decoration:none;background:#fff;border:2px solid var(--acc2);color:var(--acc2);display:inline-flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -107,13 +110,13 @@
 const T = {
   tr:{title:'Seçkin Portföyümüz',sub:'İncelediğiniz mülkleri listenize ekleyin, süreci başlatalım.',q:'Ara...',allD:'Tüm İlçeler',allT:'Tüm Türler',allR:'Tüm Odalar',
     sortP:'Fiyat (yüksek→düşük)',sortPa:'Fiyat (düşük→yüksek)',add:'Listeye Ekle',added:'✓ Listede',cart:'Listem',dtitle:'Seçtiğiniz Mülkler',empty:'Portföyde henüz ilan yok.',
-    name:'Ad Soyad',phone:'Telefon',email:'E-posta (opsiyonel)',msg:'Mesajınız (opsiyonel)',send:'Süreci Başlat',thanks:'Talebiniz alındı! En kısa sürede dönüş yapacağız.',cartEmpty:'Listeniz boş.'},
+    name:'Ad Soyad',phone:'Telefon',email:'E-posta (opsiyonel)',msg:'Mesajınız (opsiyonel)',send:'Süreci Başlat',thanks:'Talebiniz alındı! En kısa sürede dönüş yapacağız.',cartEmpty:'Listeniz boş.',view:'🔗 İlanı Gör'},
   en:{title:'Our Curated Portfolio',sub:'Add the properties you like to your list and start the process.',q:'Search...',allD:'All Districts',allT:'All Types',allR:'All Rooms',
     sortP:'Price (high→low)',sortPa:'Price (low→high)',add:'Add to List',added:'✓ In List',cart:'My List',dtitle:'Your Selected Properties',empty:'No listings in portfolio yet.',
-    name:'Full Name',phone:'Phone',email:'Email (optional)',msg:'Your message (optional)',send:'Start Process',thanks:'Request received! We will contact you shortly.',cartEmpty:'Your list is empty.'},
+    name:'Full Name',phone:'Phone',email:'Email (optional)',msg:'Your message (optional)',send:'Start Process',thanks:'Request received! We will contact you shortly.',cartEmpty:'Your list is empty.',view:'🔗 View Listing'},
   ar:{title:'محفظتنا المختارة',sub:'أضف العقارات التي تعجبك إلى قائمتك ولنبدأ العملية.',q:'بحث...',allD:'كل المناطق',allT:'كل الأنواع',allR:'كل الغرف',
     sortP:'السعر (الأعلى→الأقل)',sortPa:'السعر (الأقل→الأعلى)',add:'أضف إلى القائمة',added:'✓ في القائمة',cart:'قائمتي',dtitle:'العقارات المختارة',empty:'لا توجد عقارات بعد.',
-    name:'الاسم الكامل',phone:'الهاتف',email:'البريد الإلكتروني (اختياري)',msg:'رسالتك (اختياري)',send:'ابدأ العملية',thanks:'تم استلام طلبك! سنتواصل معك قريباً.',cartEmpty:'قائمتك فارغة.'},
+    name:'الاسم الكامل',phone:'الهاتف',email:'البريد الإلكتروني (اختياري)',msg:'رسالتك (اختياري)',send:'ابدأ العملية',thanks:'تم استلام طلبك! سنتواصل معك قريباً.',cartEmpty:'قائمتك فارغة.',view:'🔗 عرض الإعلان'},
 };
 const TYPE = {
   'Konut':{en:'Residential',ar:'سكني'},'Daire':{en:'Apartment',ar:'شقة'},'Villa':{en:'Villa',ar:'فيلا'},'Müstakil Ev':{en:'Detached House',ar:'منزل مستقل'},
@@ -153,7 +156,7 @@ function render(){
 function card(x){
   const inCart=CART.includes(String(x.id)), t=T[L];
   return `<div class="card" onclick="openDetail('${x.id}')">
-    <div class="img" style="background-image:url('${x.image_url||''}')"><span class="tag">${typeName(x.property_type)}</span></div>
+    <div class="img" style="background-image:url('${x.image_url||''}')" onclick="event.stopPropagation();window.open('${x.url}','_blank')" title="${T[L].view}"><span class="tag">${typeName(x.property_type)}</span>${x.url?'<span class="goext">↗</span>':''}</div>
     <div class="body">
       <div class="price">${x.price?fmt(x.price)+' ₺':'-'}</div>
       <div class="loc">📍 ${x.district||''}${x.neighborhood?' · '+x.neighborhood:''}</div>
@@ -167,7 +170,7 @@ function openDetail(id){
   const x=ALL.find(r=>String(r.id)===String(id)); if(!x)return;
   const t=T[L], lb=LBL[L], inCart=CART.includes(String(x.id));
   $('#sheet').innerHTML=`<div style="position:relative">
-    <img class="hero-img" src="${x.image_url||''}" referrerpolicy="no-referrer">
+    <a href="${x.url}" target="_blank" title="${t.view}"><img class="hero-img" src="${x.image_url||''}" referrerpolicy="no-referrer"></a>
     <button class="close" onclick="closeDetail()">×</button></div>
     <div class="pad">
       <h2>${x.price?fmt(x.price)+' ₺':''}</h2>
@@ -182,6 +185,7 @@ function openDetail(id){
       <div class="actions">
         <button class="b-cart ${inCart?'in':''}" onclick="toggleCart('${x.id}');openDetail('${x.id}')">${inCart?t.added:t.add}</button>
         <button class="b-proc" onclick="closeDetail();openCart()">${t.send}</button>
+        ${x.url?`<a class="b-view" href="${x.url}" target="_blank">${t.view}</a>`:''}
       </div>
     </div>`;
   $('#modal').classList.add('open');
