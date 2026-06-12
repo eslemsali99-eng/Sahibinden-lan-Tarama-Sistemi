@@ -175,7 +175,8 @@ async function handle(req, res) {
 
   // --- aktiflik kontrol: kontrol edilecek ilanlar ---
   if (req.method === 'GET' && pathOnly === '/api/need-check') {
-    const rows = await all('SELECT id,url FROM listings WHERE removed=0 ORDER BY (last_check IS NULL) DESC, last_check ASC LIMIT 400');
+    // telefonu olmayanları öne al (hem aktiflik kontrolü hem telefon çekme aynı sayfadan)
+    const rows = await all("SELECT id,url FROM listings WHERE removed=0 ORDER BY (phone IS NULL OR phone='') DESC, (last_check IS NULL) DESC, last_check ASC LIMIT 400");
     return sendJSON(res, 200, rows);
   }
   if (req.method === 'POST' && pathOnly === '/api/mark-checked') {

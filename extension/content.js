@@ -114,28 +114,39 @@
     try { const r = await fetch(url, { credentials: 'include' }); status = r.status; html = await r.text(); } catch (e) { return { err: true }; }
     if (/Basılı Tut|Olağan dışı|Bağlantınız kontrol/i.test(html)) return { challenge: true };
     if (status === 404 || /yayından kaldır|yayında olmayan|yayında değil|ilana ulaşılam|ilan bulunamad|kaldırılmış|sona ermiş|yayında bulun/i.test(html)) return { removed: true };
-    return { active: true };
+    // AKTİF: aynı sayfadan telefon + tapu da çek (ekstra istek yok, IP yormaz)
+    let phone = null, tapu = null;
+    try {
+      const txt = (new DOMParser().parseFromString(html, 'text/html')).body.innerText || '';
+      phone = (txt.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]
+        || (txt.match(/0?\s?2\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0] || null;
+      if (phone) phone = phone.replace(/\s+/g, ' ').trim();
+      tapu = (txt.match(/Tapu Durumu\s*:?\s*([A-Za-zÇĞİÖŞÜçğıöşü\/ ]{3,30})/) || [])[1] || null;
+      if (tapu) tapu = tapu.trim();
+    } catch (e) {}
+    return { active: true, phone, tapu };
   }
   async function checkActive() {
     btn4.disabled = true; btn4.textContent = '⏳...'; box.innerHTML = '';
     const U = (p) => NEED.replace('/api/need-phone', p);
     let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then(r => r.json()); } catch (e) { alert('collector yok'); btn4.disabled = false; btn4.textContent = '📋 Aktiflik Kontrol'; return; }
     log(`📋 ${list.length} ilan aktiflik kontrolü başladı...`, '#fa0');
-    let removed = [], active = [], i = 0, totalRemoved = 0;
+    let removed = [], active = [], i = 0, totalRemoved = 0, totalPhone = 0;
     for (const it of list) {
       const url = it.url.startsWith('http') ? it.url : BASE + it.url;
       const r = await checkOne(url);
       if (r.challenge) { log('⏸️ doğrulama — sekmeyi yenile/geç, tekrar bas', '#f55'); alert('Doğrulama çıktı. Sekmeyi yenile, geç, tekrar "Aktiflik Kontrol"e bas.'); break; }
-      if (r.removed) { removed.push(it.id); totalRemoved++; } else if (r.active) active.push(it.id);
+      if (r.removed) { removed.push(it.id); totalRemoved++; }
+      else if (r.active) { active.push(it.id); if (r.phone) { totalPhone++; try { await jpost(U('/api/enrich'), { id: it.id, phone: r.phone, ownership_type: r.tapu, verified_owner: 1 }); } catch (e) {} } }
       i++;
       if (removed.length >= 15) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }
       if (active.length >= 50) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
-      if (i % 25 === 0) log(`   ${i}/${list.length} · kalkan: ${totalRemoved}`, '#0f0');
+      if (i % 25 === 0) log(`   ${i}/${list.length} · kalkan: ${totalRemoved} · tel: ${totalPhone}`, '#0f0');
       await sleep(rnd(PAGE_MIN, PAGE_MAX));
     }
     if (removed.length) try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {}
     if (active.length) try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {}
-    log(`✅ Kontrol bitti: ${i} ilan, ${totalRemoved} yayından kalkmış (teyit bekliyor)`, '#0f0');
+    log(`✅ Kontrol bitti: ${i} ilan · ${totalRemoved} kalkmış · ${totalPhone} telefon çekildi`, '#0f0');
     btn4.disabled = false; btn4.textContent = '📋 Aktiflik Kontrol';
   }
   btn4.onclick = checkActive;
@@ -170,12 +181,13 @@
     list = (list || []).slice(0, 60);
     if (!list.length) { localStorage.setItem('bircan_lastcheck', String(Date.now())); return; }
     log(`📋 günlük aktiflik kontrolü: ${list.length} ilan`, '#fa0');
-    let removed = [], active = [], gone = 0;
+    let removed = [], active = [], gone = 0, phones = 0;
     for (const it of list) {
       const url = it.url.startsWith('http') ? it.url : BASE + it.url;
       const r = await checkOne(url);
       if (r.challenge) { log('⏸️ doğrulama — kontrol yarın devam eder', '#f55'); break; }
-      if (r.removed) { removed.push(it.id); gone++; } else if (r.active) active.push(it.id);
+      if (r.removed) { removed.push(it.id); gone++; }
+      else if (r.active) { active.push(it.id); if (r.phone) { phones++; try { await jpost(U('/api/enrich'), { id: it.id, phone: r.phone, ownership_type: r.tapu, verified_owner: 1 }); } catch (e) {} } }
       if (removed.length >= 10) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }
       if (active.length >= 40) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
       await sleep(rnd(PAGE_MIN, PAGE_MAX));
@@ -183,7 +195,7 @@
     if (removed.length) try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {}
     if (active.length) try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {}
     localStorage.setItem('bircan_lastcheck', String(Date.now()));
-    log(`✅ günlük kontrol bitti: ${gone} yayından kalkmış (Yayından Kalkanlar'a düştü)`, '#0f0');
+    log(`✅ günlük kontrol bitti: ${gone} kalkmış, ${phones} telefon çekildi`, '#0f0');
   }
   function setAuto(on) {
     localStorage.setItem('bircan_auto', on ? '1' : '');

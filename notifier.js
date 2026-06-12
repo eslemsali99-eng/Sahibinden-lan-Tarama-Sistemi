@@ -5,6 +5,8 @@ const path = require('path');
 const cfg = require('./config');
 
 const NOTIFY_FILE = path.join(cfg.OUTPUT_DIR, 'notify.json');
+// Panelin herkese açık adresi (Render RENDER_EXTERNAL_URL'i otomatik verir) — kalkan ilan linkinde kullanılır
+const PANEL = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || 'http://localhost:7777').replace(/\/$/, '');
 function load() {
   // Render/bulut: tüm config NOTIFY_JSON env değişkeninden; yerel: output/notify.json
   if (process.env.NOTIFY_JSON) {
@@ -91,7 +93,9 @@ async function notifyRemoved(listings) {
   const lines = listings.slice(0, 8).map((x) => {
     const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
     const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
-    return `📭 <b>${price}</b> ${x.property_type || ''} — ${yer}\n${x.url}`;
+    // sahibinden linki ölü -> kendi panelimizdeki o spesifik ilana yönlendir (Yayından Kalkanlar)
+    const link = `${PANEL}/?tab=removed&id=${encodeURIComponent(x.id)}`;
+    return `📭 <b>${price}</b> ${x.property_type || ''} — ${yer}\n👉 Panelde aç: ${link}`;
   });
   await send(`🔎 <b>${listings.length} İLAN YAYINDAN KALKTI</b> — Teyit gerekiyor!\nEv sahibini ara: sattı mı, vazgeçti mi? 📞\n\n` + lines.join('\n\n'));
 }

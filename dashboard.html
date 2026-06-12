@@ -55,6 +55,8 @@
   .stsel{background:var(--inputbg);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px;font-size:11.5px}
   .pfbtn{border:none;border-radius:7px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:11.5px;background:var(--panel2);color:var(--badgetx)}.pfbtn.on{background:#2e7d32;color:#fff}
   .empty{text-align:center;padding:60px;color:var(--mut)}
+  @keyframes hlflash{0%,100%{background:transparent}25%{background:rgba(233,196,106,.45)}}
+  tr.hl td{animation:hlflash 2.2s ease 2}
   /* responsive / mobil */
   @media(max-width:760px){
     .topbar{gap:8px;padding:9px 12px;flex-wrap:wrap}.logo{font-size:13px} .nav a{padding:6px 9px;font-size:12px} .live{font-size:11px}
@@ -142,8 +144,19 @@ async function loadStats(){
 }
 async function load(){
   try{ ALL=await fetch('/api/listings?seller=sahibinden').then(r=>r.json()); fillFilters(); render();
-    $('#upd').textContent=new Date().toLocaleTimeString('tr-TR'); }catch(e){}
+    $('#upd').textContent=new Date().toLocaleTimeString('tr-TR'); handleDeepLink(); }catch(e){}
   loadStats();
+}
+let deeplinkDone=false;
+function handleDeepLink(){
+  if(deeplinkDone)return; deeplinkDone=true;
+  const P=new URLSearchParams(location.search), tab=P.get('tab'), id=P.get('id');
+  if(tab){ const tb=document.querySelector(`.tab[data-mode="${tab}"]`); if(tb)tb.click(); }
+  if(id) setTimeout(()=>highlightRow(id),350);
+}
+function highlightRow(id){
+  const tr=document.querySelector(`tr[data-id="${(window.CSS&&CSS.escape)?CSS.escape(String(id)):id}"]`);
+  if(tr){ tr.scrollIntoView({behavior:'smooth',block:'center'}); tr.classList.add('hl'); setTimeout(()=>tr.classList.remove('hl'),5000); }
 }
 function fillFilters(){
   const d=$('#district'),t=$('#type'); const cur={d:d.value,t:t.value};
@@ -166,7 +179,7 @@ function render(){
   r.sort(by[s]||by.new);
   document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone));
   $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
-  $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr>
+  $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr data-id="${x.id}">
     <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer">`:''}</td>
     <td><span class="badge b-tur">${x.property_type||'-'}</span></td>
     <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a>${isNew(x)?'<span class="b-new">YENİ</span>':''}</td>
