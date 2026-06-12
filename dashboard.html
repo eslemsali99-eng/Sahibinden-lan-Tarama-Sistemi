@@ -19,16 +19,22 @@
   .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:p 1.6s infinite}
   @keyframes p{0%{box-shadow:0 0 0 0 rgba(46,204,113,.5)}70%{box-shadow:0 0 0 7px rgba(46,204,113,0)}100%{box-shadow:0 0 0 0 rgba(46,204,113,0)}}
   .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:11px;padding:14px 22px}
-  .mcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .mcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+  .mcard:hover{transform:translateY(-2px);border-color:var(--acc);box-shadow:0 6px 18px rgba(79,140,255,.12)}
   .mcard .ico{font-size:16px;opacity:.85}.mcard .num{font-size:22px;font-weight:800;margin:4px 0 1px;letter-spacing:-.4px}
   .mcard .lbl{font-size:11.5px;color:var(--mut)}
   .mcard.hot{border-color:var(--gold)}.mcard.hot .num{color:var(--gold)}
   .mcard.warn .num{color:var(--amber)} .mcard.new .num{color:var(--green)}
   .chartwrap{padding:0 22px 6px}.chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
   .chart h4{margin:0 0 10px;font-size:12px;color:var(--mut);font-weight:600}
-  .bar{display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px}
-  .bar .nm{width:84px;color:var(--mut)} .bar .track{flex:1;background:var(--inputbg);border-radius:6px;height:12px;overflow:hidden}
-  .bar .fill{height:100%;background:linear-gradient(90deg,#4f8cff,#7db1ff);border-radius:6px} .bar .v{width:42px;text-align:right;font-weight:700}
+  .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:12.5px}
+  .bar .nm{width:84px;color:var(--txt);font-weight:600} .bar .track{flex:1;background:var(--inputbg);border-radius:7px;height:16px;overflow:hidden}
+  .bar .fill{height:100%;background:linear-gradient(90deg,#4f8cff,#7db1ff);border-radius:7px;min-width:3px;transition:width .7s cubic-bezier(.3,1.2,.4,1)}
+  .bar.top .fill{background:linear-gradient(90deg,var(--gold),#f4d98a)}
+  .bar .v{width:84px;text-align:right;font-weight:800}.bar .v small{color:var(--mut);font-weight:600;font-size:11px;margin-inline-start:5px}
+  .b-new{background:var(--green);color:#063;font-size:9.5px;padding:2px 6px;border-radius:20px;font-weight:800;margin-inline-start:6px;vertical-align:middle}
+  body.no-phone .col-phone{display:none}
+  td.sysdate{color:var(--badgetx);font-weight:700;white-space:nowrap}
   .tabs{display:flex;gap:7px;padding:6px 22px 0;flex-wrap:wrap}
   .tab{padding:8px 14px;border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;cursor:pointer;color:var(--mut);background:transparent;font-size:13px}
   .tab.active{background:var(--panel);color:var(--txt);font-weight:700}.tab.alert.active{color:var(--gold)}
@@ -98,7 +104,7 @@
   <table>
     <thead><tr>
       <th>Görsel</th><th>Tür</th><th>Başlık</th><th>Fiyat</th><th>İlçe / Mahalle</th>
-      <th>m² · Oda</th><th>Tarih</th><th>Yaş</th><th>Kalan</th><th>Telefon</th><th>Durum</th><th>Teyit</th><th>Portföy</th><th>İlan</th>
+      <th>m² · Oda</th><th>İlan Tarihi</th><th>Sisteme</th><th>Yaş</th><th>Kalan</th><th class="col-phone">Telefon</th><th>Durum</th><th>Teyit</th><th>Portföy</th><th>İlan</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
@@ -114,6 +120,8 @@ function toggleTheme(){const l=document.documentElement.classList.toggle('light'
 if(document.documentElement.classList.contains('light'))setTimeout(()=>$('#themebtn').textContent='🌙 Koyu',0);
 const fmt=(n)=>n==null||n===''?'':Number(n).toLocaleString('tr-TR');
 const waLink=(p)=>{ const d=(p||'').replace(/\D/g,'').replace(/^0/,''); return d?`https://wa.me/90${d}`:''; };
+const fmtDate=(iso)=>{ if(!iso)return''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
+const isNew=(x)=>x.first_seen&&(Date.now()-new Date(x.first_seen).getTime()<864e5);
 
 async function upd(id, field, value){
   await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fields:{[field]:value}})});
@@ -128,8 +136,8 @@ async function loadStats(){
       ['⭐',s.portfolio,'Portföyde',''],['📩',s.inquiries,'Müşteri Talebi',''],
       ['📭',s.removed,'Yayından Kalkan','warn'],['☎️',s.arananlar,'İşlenen','warn'],['🗺️',s.districts,'İlçe','']
     ].map(([i,n,l,c])=>`<div class="mcard ${c}"><div class="ico">${i}</div><div class="num">${fmt(n)}</div><div class="lbl">${l}</div></div>`).join('');
-    const mx=Math.max(1,...s.byDistrict.map(d=>d.c));
-    $('#chart').innerHTML=s.byDistrict.map(d=>`<div class="bar"><span class="nm">${d.district}</span><span class="track"><span class="fill" style="width:${d.c/mx*100}%"></span></span><span class="v">${d.c}</span></div>`).join('')||'<span class="muted">—</span>';
+    const mx=Math.max(1,...s.byDistrict.map(d=>d.c)); const tot=s.byDistrict.reduce((a,d)=>a+d.c,0)||1;
+    $('#chart').innerHTML=s.byDistrict.map(d=>`<div class="bar${d.c===mx?' top':''}"><span class="nm">${d.district}</span><span class="track"><span class="fill" style="width:${d.c/mx*100}%"></span></span><span class="v">${fmt(d.c)}<small>%${Math.round(d.c/tot*100)}</small></span></div>`).join('')||'<span class="muted">—</span>';
   }catch(e){}
 }
 async function load(){
@@ -156,17 +164,18 @@ function render(){
   if(MODE==='new'){const c=Date.now()-864e5;r=r.filter(x=>x.first_seen&&new Date(x.first_seen).getTime()>=c);}
   const by={new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};
   r.sort(by[s]||by.new);
+  document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone));
   $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
   $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr>
     <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer">`:''}</td>
     <td><span class="badge b-tur">${x.property_type||'-'}</span></td>
-    <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a></td>
+    <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a>${isNew(x)?'<span class="b-new">YENİ</span>':''}</td>
     <td class="price">${x.price?fmt(x.price)+' ₺':''}</td>
     <td>${x.district||''}<div class="muted">${x.neighborhood||''}</div></td>
     <td>${x.area_m2?x.area_m2+' m²':''}${x.rooms?' · '+x.rooms:''}</td>
-    <td class="muted">${x.listing_date||''}</td><td>${x.days_on_site??''}</td>
+    <td class="muted">${x.listing_date||''}</td><td class="sysdate">${fmtDate(x.first_seen)}</td><td>${x.days_on_site??''}</td>
     <td class="${leftClass(x.days_left)}">${x.days_left??''}</td>
-    <td>${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:'<span class="muted">—</span>'}</td>
+    <td class="col-phone">${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:'<span class="muted">—</span>'}</td>
     <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select></td>
     <td>${x.removed==1?`<select class="stsel" onchange="upd('${x.id}','verify_status',this.value)">${VERIFY.map(v=>`<option ${(x.verify_status||'Teyit Bekliyor')===v?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>'}</td>
     <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>
