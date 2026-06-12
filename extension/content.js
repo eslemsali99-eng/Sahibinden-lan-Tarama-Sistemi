@@ -2,8 +2,9 @@
 (function () {
   if (window.__bircanV4) return; window.__bircanV4 = true;
   const VER = 'v4';
-  const ING = 'http://localhost:7777/ingest', ENR = 'http://localhost:7777/api/enrich', NEED = 'http://localhost:7777/api/need-phone';
-  const TOK = '4494b5bbf56919602c5db2724fb0621a'; // ekip token'i (backend ile ayni)
+  const CFG = window.BIRCAN_CFG || { collector: 'http://localhost:7777', token: '' };
+  const ING = CFG.collector + '/ingest', ENR = CFG.collector + '/api/enrich', NEED = CFG.collector + '/api/need-phone';
+  const TOK = CFG.token; // config.js'ten (gitignore'lu)
   const BASE = 'https://www.sahibinden.com';
   const MAX_PAGES = 60, PAGE_MIN = 3500, PAGE_MAX = 7000, DIST_MIN = 7000, DIST_MAX = 12000;
   const DISTRICTS = [

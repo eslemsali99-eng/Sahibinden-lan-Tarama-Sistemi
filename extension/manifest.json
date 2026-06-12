@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Bircan Akın · İlan Tarama",
-  "version": "1.6",
+  "version": "1.7",
   "description": "Sahibinden ilan listelerini Bircan Akın CRM toplayıcısına aktarır.",
   "content_scripts": [
     {
       "matches": ["*://*.sahibinden.com/*"],
-      "js": ["content.js"],
+      "js": ["config.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

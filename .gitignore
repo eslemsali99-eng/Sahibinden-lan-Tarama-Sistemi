@@ -14,3 +14,4 @@ discover*.js
 parse-sample.js
 check.js
 login.js
+extension/config.js
