@@ -2,7 +2,7 @@
 (function () {
   if (window.__bircanV4) return; window.__bircanV4 = true;
   const VER = 'v4';
-  const CFG = window.BIRCAN_CFG || { collector: 'http://localhost:7777', token: '' };
+  const CFG = window.BIRCAN_CFG || { collector: 'https://bircan-emlak-crm.onrender.com', token: '' };
   const ING = CFG.collector + '/ingest', ENR = CFG.collector + '/api/enrich', NEED = CFG.collector + '/api/need-phone';
   const TOK = CFG.token; // config.js'ten (gitignore'lu)
   const BASE = 'https://www.sahibinden.com';
@@ -23,8 +23,8 @@
     b.style.cssText = `position:fixed;z-index:2147483647;right:16px;bottom:${bottom}px;background:${color};color:#fff;border:none;border-radius:12px;padding:13px 18px;font:700 14px/1 -apple-system,Arial;box-shadow:0 6px 24px rgba(0,0,0,.35);cursor:pointer`;
     document.body.appendChild(b); return b;
   }
-  const btn = mkBtn('🏠 İlanları Tara', 162, '#4f8cff');
-  const btn2 = mkBtn('📞 Telefon Çek', 116, '#8e44ad');
+  // Telefon çekme butonu IP yorduğu için kaldırıldı. Sadece hafif tarama + 7/24 + aktiflik kontrol.
+  const btn = mkBtn('🏠 İlanları Tara', 116, '#4f8cff');
   const btn4 = mkBtn('📋 Aktiflik Kontrol', 24, '#c0392b');
   const btn3 = mkBtn('🔄 7/24 Oto', 70, '#555');
   const box = document.createElement('div');
@@ -81,7 +81,7 @@
       log(`   ✓ ${d.name}: ${got} | DB: ${grand}`, '#0f0');
       await sleep(rnd(DIST_MIN, DIST_MAX));
     }
-    log(`✅ 5 İLÇE TAMAM. DB toplam: ${grand}. Şimdi "📞 Telefon Çek"e basabilirsin.`, '#0f0');
+    log(`✅ 5 İLÇE TAMAM. DB toplam: ${grand}. Artık "🔄 7/24 Oto"ya basıp bırakabilirsin.`, '#0f0');
     setDone([]); // sonraki tam tarama icin sifirla
     btn.disabled = false; btn.textContent = '🏠 İlanları Tara';
   }
@@ -165,5 +165,5 @@
   btn3.onclick = () => setAuto(localStorage.getItem('bircan_auto') !== '1');
   if (localStorage.getItem('bircan_auto') === '1') setTimeout(() => setAuto(true), 4000);
 
-  btn.onclick = harvest; btn2.onclick = enrich;
+  btn.onclick = harvest;
 })();
