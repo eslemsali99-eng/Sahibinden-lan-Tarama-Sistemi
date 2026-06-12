@@ -178,7 +178,7 @@
     if (Date.now() - last < DAY_MS) return;
     const U = (p) => ING.replace('/ingest', p);
     let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then((r) => r.json()); } catch (e) { return; }
-    list = (list || []).slice(0, 60);
+    list = (list || []).slice(0, 40); // nazik: günde 40, yavaş tempo (blok riskini düşür)
     if (!list.length) { localStorage.setItem('bircan_lastcheck', String(Date.now())); return; }
     log(`📋 günlük aktiflik kontrolü: ${list.length} ilan`, '#fa0');
     let removed = [], active = [], gone = 0, phones = 0;
@@ -190,7 +190,7 @@
       else if (r.active) { active.push(it.id); if (r.phone) { phones++; try { await jpost(U('/api/enrich'), { id: it.id, phone: r.phone, ownership_type: r.tapu, verified_owner: 1 }); } catch (e) {} } }
       if (removed.length >= 10) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }
       if (active.length >= 40) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
-      await sleep(rnd(PAGE_MIN, PAGE_MAX));
+      await sleep(rnd(8000, 16000)); // detay sayfaları arası yavaş bekleme
     }
     if (removed.length) try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {}
     if (active.length) try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {}
