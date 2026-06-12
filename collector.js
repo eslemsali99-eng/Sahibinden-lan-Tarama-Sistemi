@@ -24,7 +24,7 @@ const SID = crypto.createHash('sha256').update(TEAM_PASS + '::bircan').digest('h
 const authed = (req) => (req.headers.cookie || '').includes('bircan_sid=' + SID);
 const hasToken = (req) => (req.headers['x-token'] || '') === TOKEN;
 const PUBLIC = ['/login', '/portfolio', '/musteri', '/api/portfolio', '/api/inquiry', '/harvester.js', '/kur'];
-const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone'];
+const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone', '/api/need-check', '/api/mark-removed', '/api/mark-checked'];
 const LOGIN_HTML = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Giriş · Bircan Akın</title>
 <style>body{font-family:-apple-system,Arial;background:#0b1020;color:#e7ecf6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
 form{background:#151b30;padding:34px;border-radius:16px;border:1px solid #26304d;width:320px;text-align:center}
@@ -149,6 +149,8 @@ const server = http.createServer((req, res) => {
       withPhone: one("SELECT COUNT(*) c FROM listings WHERE phone IS NOT NULL AND phone!='' AND is_active=1"),
       inquiries: one('SELECT COUNT(*) c FROM inquiries'),
       arananlar: one("SELECT COUNT(*) c FROM listings WHERE status!='Yeni' AND is_active=1"),
+      removed: one('SELECT COUNT(*) c FROM listings WHERE removed=1'),
+      needVerify: one("SELECT COUNT(*) c FROM listings WHERE removed=1 AND (verify_status IS NULL OR verify_status='Teyit Bekliyor')"),
       districts: one('SELECT COUNT(DISTINCT district) c FROM listings WHERE is_active=1'),
       byDistrict: db.prepare('SELECT district, COUNT(*) c FROM listings WHERE is_active=1 GROUP BY district ORDER BY c DESC').all(),
     };
@@ -197,12 +199,47 @@ h2{color:#4f8cff}.big{font-size:15px}</style></head><body>
     req.on('end', () => {
       try {
         const { id, fields } = JSON.parse(body);
-        const allow = ['status', 'notes', 'assignee', 'shared'];
+        const allow = ['status', 'notes', 'assignee', 'shared', 'verify_status'];
         const sets = [], vals = [];
         for (const k of allow) if (k in fields) { sets.push(`${k}=?`); vals.push(fields[k]); }
         if ('shared' in fields && fields.shared) { sets.push('consent_date=?'); vals.push(new Date().toISOString()); }
         if (sets.length) { vals.push(String(id)); db.prepare(`UPDATE listings SET ${sets.join(',')} WHERE id=?`).run(...vals); }
         res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  // --- aktiflik kontrol: kontrol edilecek aktif ilanlar (en eski kontrol once) ---
+  if (req.method === 'GET' && req.url.startsWith('/api/need-check')) {
+    const rows = db.prepare("SELECT id,url FROM listings WHERE removed=0 ORDER BY (last_check IS NULL) DESC, last_check ASC LIMIT 400").all();
+    res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(rows));
+  }
+  // --- hala aktif olanlari isaretle (last_check guncelle) ---
+  if (req.method === 'POST' && req.url === '/api/mark-checked') {
+    let body = ''; req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try { const { ids } = JSON.parse(body); const now = new Date().toISOString();
+        const st = db.prepare('UPDATE listings SET last_check=? WHERE id=?');
+        db.transaction(() => { for (const id of ids) st.run(now, String(id)); })();
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (e) { res.writeHead(400); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+  // --- yayindan kalkanlari isaretle + bildirim ---
+  if (req.method === 'POST' && req.url === '/api/mark-removed') {
+    let body = ''; req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const { ids } = JSON.parse(body); const now = new Date().toISOString();
+        const sel = db.prepare("SELECT * FROM listings WHERE id=? AND removed=0");
+        const upd = db.prepare("UPDATE listings SET removed=1, removed_date=?, verify_status='Teyit Bekliyor', last_check=? WHERE id=?");
+        const fresh = [];
+        db.transaction(() => { for (const id of ids) { const r = sel.get(String(id)); if (r) { upd.run(now, now, String(id)); fresh.push(r); } } })();
+        res.writeHead(200); res.end(JSON.stringify({ ok: true, removed: fresh.length }));
+        if (fresh.length) notifier.notifyRemoved(fresh).catch(() => {});
+        console.log(`📭 ${fresh.length} ilan yayından kalktı (teyit bekliyor)`);
       } catch (e) { res.writeHead(400); res.end(JSON.stringify({ error: e.message })); }
     });
     return;

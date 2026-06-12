@@ -65,4 +65,16 @@ async function notifyPriceDrops(drops) {
   await send(`💰 <b>${drops.length} İLANDA FİYAT DÜŞTÜ</b> — pazarlığa açık olabilir! 📞\n\n` + lines.join('\n\n'));
 }
 
-module.exports = { send, notifyNew, notifyPriceDrops, load };
+// yayından kalkan ilan bildirimi (teyit gerekiyor)
+async function notifyRemoved(listings) {
+  if (!listings.length) return;
+  const c = load(); if (!c.enabled) return;
+  const lines = listings.slice(0, 8).map((x) => {
+    const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
+    const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
+    return `📭 <b>${price}</b> ${x.property_type || ''} — ${yer}\n${x.url}`;
+  });
+  await send(`🔎 <b>${listings.length} İLAN YAYINDAN KALKTI</b> — Teyit gerekiyor!\nEv sahibini ara: sattı mı, vazgeçti mi? 📞\n\n` + lines.join('\n\n'));
+}
+
+module.exports = { send, notifyNew, notifyPriceDrops, notifyRemoved, load };

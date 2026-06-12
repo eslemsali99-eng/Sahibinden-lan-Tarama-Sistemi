@@ -23,11 +23,12 @@
     b.style.cssText = `position:fixed;z-index:2147483647;right:16px;bottom:${bottom}px;background:${color};color:#fff;border:none;border-radius:12px;padding:13px 18px;font:700 14px/1 -apple-system,Arial;box-shadow:0 6px 24px rgba(0,0,0,.35);cursor:pointer`;
     document.body.appendChild(b); return b;
   }
-  const btn = mkBtn('🏠 İlanları Tara', 116, '#4f8cff');
-  const btn2 = mkBtn('📞 Telefon Çek', 70, '#8e44ad');
-  const btn3 = mkBtn('🔄 7/24 Oto', 24, '#555');
+  const btn = mkBtn('🏠 İlanları Tara', 162, '#4f8cff');
+  const btn2 = mkBtn('📞 Telefon Çek', 116, '#8e44ad');
+  const btn4 = mkBtn('📋 Aktiflik Kontrol', 24, '#c0392b');
+  const btn3 = mkBtn('🔄 7/24 Oto', 70, '#555');
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:170px;width:340px;max-height:50vh;overflow:auto;background:#111;color:#0f0;font:12px/1.4 monospace;padding:10px;border-radius:10px;display:none;box-shadow:0 6px 24px rgba(0,0,0,.4)';
+  box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:210px;width:340px;max-height:48vh;overflow:auto;background:#111;color:#0f0;font:12px/1.4 monospace;padding:10px;border-radius:10px;display:none;box-shadow:0 6px 24px rgba(0,0,0,.4)';
   document.body.appendChild(box);
   const log = (m, c) => { box.style.display = 'block'; const d = document.createElement('div'); if (c) d.style.color = c; d.textContent = m; box.appendChild(d); box.scrollTop = box.scrollHeight; };
 
@@ -105,6 +106,38 @@
     log(`✅ Telefon çekme bitti: ${done}/${list.length}`, '#0f0');
     btn2.disabled = false; btn2.textContent = '📞 Telefon Çek';
   }
+
+  // --- AKTİFLİK KONTROL: sahibinden'de hâlâ var mı? yoksa 'yayından kalktı' işaretle ---
+  async function checkOne(url) {
+    let html = '', status = 0;
+    try { const r = await fetch(url, { credentials: 'include' }); status = r.status; html = await r.text(); } catch (e) { return { err: true }; }
+    if (/Basılı Tut|Olağan dışı|Bağlantınız kontrol/i.test(html)) return { challenge: true };
+    if (status === 404 || /yayından kaldır|yayında olmayan|yayında değil|ilana ulaşılam|ilan bulunamad|kaldırılmış|sona ermiş|yayında bulun/i.test(html)) return { removed: true };
+    return { active: true };
+  }
+  async function checkActive() {
+    btn4.disabled = true; btn4.textContent = '⏳...'; box.innerHTML = '';
+    const U = (p) => NEED.replace('/api/need-phone', p);
+    let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then(r => r.json()); } catch (e) { alert('collector yok'); btn4.disabled = false; btn4.textContent = '📋 Aktiflik Kontrol'; return; }
+    log(`📋 ${list.length} ilan aktiflik kontrolü başladı...`, '#fa0');
+    let removed = [], active = [], i = 0, totalRemoved = 0;
+    for (const it of list) {
+      const url = it.url.startsWith('http') ? it.url : BASE + it.url;
+      const r = await checkOne(url);
+      if (r.challenge) { log('⏸️ doğrulama — sekmeyi yenile/geç, tekrar bas', '#f55'); alert('Doğrulama çıktı. Sekmeyi yenile, geç, tekrar "Aktiflik Kontrol"e bas.'); break; }
+      if (r.removed) { removed.push(it.id); totalRemoved++; } else if (r.active) active.push(it.id);
+      i++;
+      if (removed.length >= 15) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }
+      if (active.length >= 50) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
+      if (i % 25 === 0) log(`   ${i}/${list.length} · kalkan: ${totalRemoved}`, '#0f0');
+      await sleep(rnd(PAGE_MIN, PAGE_MAX));
+    }
+    if (removed.length) try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {}
+    if (active.length) try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {}
+    log(`✅ Kontrol bitti: ${i} ilan, ${totalRemoved} yayından kalkmış (teyit bekliyor)`, '#0f0');
+    btn4.disabled = false; btn4.textContent = '📋 Aktiflik Kontrol';
+  }
+  btn4.onclick = checkActive;
 
   // --- 7/24 OTO: saatte bir SADECE en yeni ilanlar (hafif, DataDome'u tetiklemez) ---
   const AUTO_MS = 60 * 60 * 1000;

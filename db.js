@@ -57,6 +57,10 @@ addCol('assignee', 'TEXT');                    // arayan ekip uyesi
 addCol('shared', 'INTEGER DEFAULT 0');         // 1 = musteri portfoyune dustu (izinli)
 addCol('consent_date', 'TEXT');
 addCol('verified_owner', 'INTEGER');           // detay-dogrulama: 1 ev sahibi, 0 emlakci, null bilinmiyor
+addCol('removed', 'INTEGER DEFAULT 0');        // 1 = sahibinden'den kaldirildi (yayindan kalkti)
+addCol('removed_date', 'TEXT');                // kaldirildigi tespit tarihi
+addCol('verify_status', 'TEXT');               // Teyit Bekliyor | Satıldı | Vazgeçti | Hâlâ Satıyor | Ulaşılamadı
+addCol('last_check', 'TEXT');                  // son aktiflik kontrol tarihi
 
 // musteri talepleri (sepet/sürec baslat)
 db.exec(`CREATE TABLE IF NOT EXISTS inquiries (
