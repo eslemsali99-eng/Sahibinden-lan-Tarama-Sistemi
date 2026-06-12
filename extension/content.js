@@ -155,6 +155,34 @@
       }
       await sleep(rnd(DIST_MIN, DIST_MAX));
     }
+    await maybeDailyCheck(); // günde 1 kez nazik aktiflik kontrolü
+  }
+
+  // Günde 1 kez küçük bir grubu (~60) kontrol eder: sahibinden'den kalkanları
+  // SİLMEDEN "Yayından Kalkanlar"a taşır (removed=1, Teyit Bekliyor) + bildirim.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  async function maybeDailyCheck() {
+    const last = +(localStorage.getItem('bircan_lastcheck') || 0);
+    if (Date.now() - last < DAY_MS) return;
+    const U = (p) => ING.replace('/ingest', p);
+    let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then((r) => r.json()); } catch (e) { return; }
+    list = (list || []).slice(0, 60);
+    if (!list.length) { localStorage.setItem('bircan_lastcheck', String(Date.now())); return; }
+    log(`📋 günlük aktiflik kontrolü: ${list.length} ilan`, '#fa0');
+    let removed = [], active = [], gone = 0;
+    for (const it of list) {
+      const url = it.url.startsWith('http') ? it.url : BASE + it.url;
+      const r = await checkOne(url);
+      if (r.challenge) { log('⏸️ doğrulama — kontrol yarın devam eder', '#f55'); break; }
+      if (r.removed) { removed.push(it.id); gone++; } else if (r.active) active.push(it.id);
+      if (removed.length >= 10) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }
+      if (active.length >= 40) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
+      await sleep(rnd(PAGE_MIN, PAGE_MAX));
+    }
+    if (removed.length) try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {}
+    if (active.length) try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {}
+    localStorage.setItem('bircan_lastcheck', String(Date.now()));
+    log(`✅ günlük kontrol bitti: ${gone} yayından kalkmış (Yayından Kalkanlar'a düştü)`, '#0f0');
   }
   function setAuto(on) {
     localStorage.setItem('bircan_auto', on ? '1' : '');
