@@ -141,7 +141,7 @@ async function handle(req, res) {
     const cutoff = new Date(Date.now() - 86400000).toISOString();
     const c = async (q, a = []) => num((await get(q, a)).c);
     const stats = {
-      total: await c('SELECT COUNT(*) c FROM listings WHERE is_active=1'),
+      total: await c('SELECT COUNT(*) c FROM listings WHERE is_active=1 AND removed=0'),
       new24h: await c('SELECT COUNT(*) c FROM listings WHERE first_seen>=?', [cutoff]),
       expiring: await c('SELECT COUNT(*) c FROM listings WHERE is_active=1 AND days_on_site BETWEEN ? AND ?', [W.min, W.max]),
       portfolio: await c('SELECT COUNT(*) c FROM listings WHERE shared=1 AND is_active=1'),
