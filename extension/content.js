@@ -1,0 +1,135 @@
+/* Bircan Akın · İlan Tarama — content script  [v4 · KONUT SATILIK · EV SAHİBİ · resume + telefon] */
+(function () {
+  if (window.__bircanV4) return; window.__bircanV4 = true;
+  const VER = 'v4';
+  const ING = 'http://localhost:7777/ingest', ENR = 'http://localhost:7777/api/enrich', NEED = 'http://localhost:7777/api/need-phone';
+  const TOK = '4494b5bbf56919602c5db2724fb0621a'; // ekip token'i (backend ile ayni)
+  const BASE = 'https://www.sahibinden.com';
+  const MAX_PAGES = 60, PAGE_MIN = 3500, PAGE_MAX = 7000, DIST_MIN = 7000, DIST_MAX = 12000;
+  const DISTRICTS = [
+    { name: 'Yıldırım', slug: 'bursa-yildirim' }, { name: 'Osmangazi', slug: 'bursa-osmangazi' },
+    { name: 'Nilüfer', slug: 'bursa-nilufer' }, { name: 'Karacabey', slug: 'bursa-karacabey' },
+    { name: 'Mudanya', slug: 'bursa-mudanya' },
+  ];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rnd = (a, b) => Math.floor(a + Math.random() * (b - a));
+  const DONE = () => JSON.parse(localStorage.getItem('bircan_done') || '[]');
+  const setDone = (a) => localStorage.setItem('bircan_done', JSON.stringify(a));
+
+  function mkBtn(txt, bottom, color) {
+    const b = document.createElement('button');
+    b.textContent = txt;
+    b.style.cssText = `position:fixed;z-index:2147483647;right:16px;bottom:${bottom}px;background:${color};color:#fff;border:none;border-radius:12px;padding:13px 18px;font:700 14px/1 -apple-system,Arial;box-shadow:0 6px 24px rgba(0,0,0,.35);cursor:pointer`;
+    document.body.appendChild(b); return b;
+  }
+  const btn = mkBtn('🏠 İlanları Tara', 116, '#4f8cff');
+  const btn2 = mkBtn('📞 Telefon Çek', 70, '#8e44ad');
+  const btn3 = mkBtn('🔄 7/24 Oto', 24, '#555');
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:170px;width:340px;max-height:50vh;overflow:auto;background:#111;color:#0f0;font:12px/1.4 monospace;padding:10px;border-radius:10px;display:none;box-shadow:0 6px 24px rgba(0,0,0,.4)';
+  document.body.appendChild(box);
+  const log = (m, c) => { box.style.display = 'block'; const d = document.createElement('div'); if (c) d.style.color = c; d.textContent = m; box.appendChild(d); box.scrollTop = box.scrollHeight; };
+
+  function parsePage(doc) {
+    return [...doc.querySelectorAll('tr.searchResultsItem[data-id]')].map((r) => {
+      if (/nativeAd/i.test(r.className)) return null;
+      const q = (s) => { const e = r.querySelector(s); return e ? e.textContent.trim().replace(/\s+/g, ' ') : null; };
+      const a = r.querySelector('a.classifiedTitle'); const img = r.querySelector('img');
+      return { id: r.getAttribute('data-id'), title: q('a.classifiedTitle'), href: a && a.getAttribute('href'),
+        priceTxt: q('.searchResultsPriceValue'), dateTxt: q('.searchResultsDateValue'), locTxt: q('.searchResultsLocationValue'),
+        attrs: [...r.querySelectorAll('.searchResultsAttributeValue')].map((e) => e.textContent.trim()),
+        imgSrc: img && (img.getAttribute('src') || img.getAttribute('data-src')) };
+    }).filter(Boolean);
+  }
+  async function jpost(url, obj) {
+    for (let t = 0; t < 3; t++) { try { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-token': TOK }, body: JSON.stringify(obj) }); return await r.json(); } catch (e) { if (t === 2) throw e; await sleep(2500); } }
+  }
+  async function getPage(url) {
+    for (let t = 0; t < 4; t++) {
+      let html = ''; try { html = await (await fetch(url, { credentials: 'include' })).text(); } catch (e) { html = ''; }
+      if (html && !/Basılı Tut|Olağan dışı|Bağlantınız kontrol/i.test(html)) return { ok: true, doc: new DOMParser().parseFromString(html, 'text/html') };
+      log(`   ⏳ doğrulama — 15sn bekle-tekrar (${t + 1}/4)`, '#fa0'); await sleep(15000);
+    }
+    return { ok: false };
+  }
+
+  async function harvest() {
+    btn.disabled = true; btn.textContent = '⏳...'; box.innerHTML = '';
+    let done = DONE(); if (done.length >= DISTRICTS.length) { done = []; setDone(done); }
+    log(`Bircan Akın ${VER} · konut satılık · ev sahibi  (tamamlanan: ${done.join(',') || '-'})`, '#9cf');
+    let grand = 0;
+    for (const d of DISTRICTS) {
+      if (done.includes(d.name)) { log(`↷ ${d.name} zaten tamam, atlandı`, '#888'); continue; }
+      const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden' };
+      log(`▶ ${d.name} ...`, '#ff0');
+      let got = 0, blocked = false;
+      for (let p = 0; p < MAX_PAGES; p++) {
+        const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
+        if (!res.ok) { blocked = true; break; }
+        const rows = parsePage(res.doc); if (rows.length === 0) break;
+        try { grand = (await jpost(ING, { meta, rows })).total; } catch (e) { log('⚠️ collector yok: ' + e.message, '#f55'); btn.disabled = false; btn.textContent = '🏠 İlanları Tara'; return; }
+        got += rows.length; await sleep(rnd(PAGE_MIN, PAGE_MAX)); if (rows.length < 20) break;
+      }
+      if (blocked) {
+        log(`⏸️ ${d.name} doğrulamaya takıldı. Bu sekmeyi YENİLE, "Basılı Tut" çıkarsa geç, sonra tekrar "İlanları Tara"ya bas — kaldığı yerden devam eder.`, '#fa0');
+        alert(`${d.name} doğrulamaya takıldı.\n1) Bu sekmeyi yenile (Cmd+R)\n2) "Basılı Tut" çıkarsa geç\n3) Tekrar "İlanları Tara"ya bas\nTamamlanan ilçeler korunur, kaldığı yerden devam eder.`);
+        btn.disabled = false; btn.textContent = '🏠 İlanları Tara'; return;
+      }
+      done.push(d.name); setDone(done);
+      log(`   ✓ ${d.name}: ${got} | DB: ${grand}`, '#0f0');
+      await sleep(rnd(DIST_MIN, DIST_MAX));
+    }
+    log(`✅ 5 İLÇE TAMAM. DB toplam: ${grand}. Şimdi "📞 Telefon Çek"e basabilirsin.`, '#0f0');
+    setDone([]); // sonraki tam tarama icin sifirla
+    btn.disabled = false; btn.textContent = '🏠 İlanları Tara';
+  }
+
+  async function enrich() {
+    btn2.disabled = true; btn2.textContent = '⏳...'; box.innerHTML = '';
+    let list; try { list = await fetch(NEED, { headers: { 'x-token': TOK } }).then(r => r.json()); } catch (e) { alert('collector yok'); btn2.disabled = false; btn2.textContent = '📞 Telefon Çek'; return; }
+    log(`📞 Telefonsuz ${list.length} ilan. Detaylardan çekiliyor...`, '#c9f');
+    let done = 0;
+    for (const it of list) {
+      const url = it.url.startsWith('http') ? it.url : BASE + it.url;
+      const res = await getPage(url);
+      if (!res.ok) { log('⏸️ doğrulama — sekmeyi yenile/gec, tekrar "Telefon Çek"e bas (kalınan yerden sürer)', '#fa0'); alert('Doğrulama çıktı. Sekmeyi yenile, "Basılı Tut" çıkarsa geç, tekrar "Telefon Çek"e bas.'); break; }
+      const txt = res.doc.body ? res.doc.body.innerText : '';
+      const phone = (txt.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]
+        || (txt.match(/0?\s?2\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0] || null;
+      const tapu = (txt.match(/Tapu Durumu\s*:?\s*([A-Za-zÇĞİÖŞÜçğıöşü\/ ]{3,30})/) || [])[1] || null;
+      try { await jpost(ENR, { id: it.id, phone: phone ? phone.replace(/\s+/g, ' ').trim() : null, ownership_type: tapu ? tapu.trim() : null, verified_owner: 1 }); } catch (e) {}
+      done++; if (done % 10 === 0) log(`   ${done}/${list.length} (son tel: ${phone || '-'})`, '#0f0');
+      await sleep(rnd(PAGE_MIN, PAGE_MAX));
+    }
+    log(`✅ Telefon çekme bitti: ${done}/${list.length}`, '#0f0');
+    btn2.disabled = false; btn2.textContent = '📞 Telefon Çek';
+  }
+
+  // --- 7/24 OTO: saatte bir SADECE en yeni ilanlar (hafif, DataDome'u tetiklemez) ---
+  const AUTO_MS = 60 * 60 * 1000;
+  let autoTimer = null;
+  async function incremental() {
+    log(`🔄 oto-tarama turu ${new Date().toLocaleTimeString('tr-TR')}`, '#9cf');
+    for (const d of DISTRICTS) {
+      const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden' };
+      for (let p = 0; p < 2; p++) { // sadece ilk 2 sayfa = en yeniler
+        const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
+        if (!res.ok) return;
+        const rows = parsePage(res.doc); if (!rows.length) break;
+        try { const r = await jpost(ING, { meta, rows }); if (r && r.fresh) log(`   +${r.fresh} yeni (${d.name})`, '#0f0'); } catch (e) { return; }
+        await sleep(rnd(PAGE_MIN, PAGE_MAX));
+      }
+      await sleep(rnd(DIST_MIN, DIST_MAX));
+    }
+  }
+  function setAuto(on) {
+    localStorage.setItem('bircan_auto', on ? '1' : '');
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    if (on) { btn3.textContent = '🔄 7/24 AÇIK'; btn3.style.background = '#2e7d32'; incremental(); autoTimer = setInterval(incremental, AUTO_MS); }
+    else { btn3.textContent = '🔄 7/24 Oto'; btn3.style.background = '#555'; }
+  }
+  btn3.onclick = () => setAuto(localStorage.getItem('bircan_auto') !== '1');
+  if (localStorage.getItem('bircan_auto') === '1') setTimeout(() => setAuto(true), 4000);
+
+  btn.onclick = harvest; btn2.onclick = enrich;
+})();

@@ -1,0 +1,16 @@
+# Sırlar, PII, veritabanı, oturum — ASLA gönderme
+output/
+.chrome-profile/
+node_modules/
+*.db
+*.db-*
+*.tgz
+cloudflared
+cf.tgz
+.DS_Store
+# eski keşif/probe dosyaları
+probe*.js
+discover*.js
+parse-sample.js
+check.js
+login.js

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bircan Akın · Canlı İlan Tarama Sistemi</title>
+<style>
+  :root{ --bg:#0a0e1a; --panel:#121829; --panel2:#161d33; --line:#26304d; --txt:#eaf0fb; --mut:#8a97b8; --acc:#4f8cff; --gold:#e9c46a; --green:#2ecc71; --red:#ff5d5d; --amber:#ffb84d; --inputbg:#0c1222; --thbg:#0e1426; --hover:#141c33; --tb1:#0d1426; --tb2:#142243; --badgebg:#1f2b4d; --badgetx:#9cc0ff; }
+  html.light{ --bg:#eef1f7; --panel:#ffffff; --panel2:#edf1f8; --line:#dde3ef; --txt:#1d2638; --mut:#64708a; --inputbg:#f4f7fc; --thbg:#eef2f9; --hover:#f4f8fe; --tb1:#1f3a5f; --tb2:#2a4d7a; --badgebg:#e7eefb; --badgetx:#2a5ca8; }
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--txt);font-size:13px}
+  ::-webkit-scrollbar{height:9px;width:9px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+  .topbar{display:flex;align-items:center;gap:14px;padding:11px 22px;background:linear-gradient(90deg,var(--tb1),var(--tb2));border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .logo{font-size:15px;font-weight:800;letter-spacing:.3px;color:#fff}.logo b{color:var(--gold)}
+  .nav{display:flex;gap:5px;margin-left:6px}
+  .nav a{color:rgba(255,255,255,.7);text-decoration:none;font-size:13px;padding:7px 13px;border-radius:8px}
+  .nav a.active{background:rgba(255,255,255,.16);color:#fff;font-weight:600}.nav a:hover{color:#fff}
+  .themebtn{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:13px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:7px;color:rgba(255,255,255,.75);font-size:12px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:p 1.6s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(46,204,113,.5)}70%{box-shadow:0 0 0 7px rgba(46,204,113,0)}100%{box-shadow:0 0 0 0 rgba(46,204,113,0)}}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:11px;padding:14px 22px}
+  .mcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .mcard .ico{font-size:16px;opacity:.85}.mcard .num{font-size:22px;font-weight:800;margin:4px 0 1px;letter-spacing:-.4px}
+  .mcard .lbl{font-size:11.5px;color:var(--mut)}
+  .mcard.hot{border-color:var(--gold)}.mcard.hot .num{color:var(--gold)}
+  .mcard.warn .num{color:var(--amber)} .mcard.new .num{color:var(--green)}
+  .chartwrap{padding:0 22px 6px}.chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .chart h4{margin:0 0 10px;font-size:12px;color:var(--mut);font-weight:600}
+  .bar{display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px}
+  .bar .nm{width:84px;color:var(--mut)} .bar .track{flex:1;background:var(--inputbg);border-radius:6px;height:12px;overflow:hidden}
+  .bar .fill{height:100%;background:linear-gradient(90deg,#4f8cff,#7db1ff);border-radius:6px} .bar .v{width:42px;text-align:right;font-weight:700}
+  .tabs{display:flex;gap:7px;padding:6px 22px 0;flex-wrap:wrap}
+  .tab{padding:8px 14px;border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;cursor:pointer;color:var(--mut);background:transparent;font-size:13px}
+  .tab.active{background:var(--panel);color:var(--txt);font-weight:700}.tab.alert.active{color:var(--gold)}
+  .toolbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;padding:12px 22px;background:var(--panel);margin:0 22px;border-radius:0 10px 0 0;border:1px solid var(--line);border-bottom:none}
+  input,select{background:var(--inputbg);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-size:12.5px;outline:none}
+  input:focus,select:focus{border-color:var(--acc)} .grow{flex:1;min-width:190px}
+  .wrap{padding:0 22px 50px}
+  table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border:1px solid var(--line);border-radius:0 0 10px 10px;overflow:hidden}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);font-size:12px;vertical-align:middle}
+  th{background:var(--thbg);color:var(--mut);font-weight:600;white-space:nowrap}
+  tr:hover td{background:var(--hover)} img.thumb{width:84px;height:60px;object-fit:cover;border-radius:7px;background:#2a3658;display:block}
+  .badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:10.5px;font-weight:700}
+  .b-tur{background:var(--badgebg);color:var(--badgetx)} .price{font-weight:800;white-space:nowrap;color:var(--txt)}
+  .left-ok{color:var(--green);font-weight:700}.left-warn{color:var(--amber);font-weight:700}.left-crit{color:var(--red);font-weight:800}
+  a.go{display:inline-block;padding:5px 10px;background:var(--acc);color:#fff;border-radius:7px;text-decoration:none;font-size:11.5px;font-weight:700;white-space:nowrap}
+  a.wa{display:inline-block;padding:4px 8px;background:#25d366;color:#073;border-radius:7px;text-decoration:none;font-size:11.5px;font-weight:800;margin-inline-start:4px}
+  a.title{color:var(--txt);text-decoration:none}a.title:hover{color:var(--acc)} .muted{color:var(--mut)}
+  .stsel{background:var(--inputbg);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px;font-size:11.5px}
+  .pfbtn{border:none;border-radius:7px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:11.5px;background:var(--panel2);color:var(--badgetx)}.pfbtn.on{background:#2e7d32;color:#fff}
+  .empty{text-align:center;padding:60px;color:var(--mut)}
+</style>
+<script>if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light')</script>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">🏛️ Bircan <b>Akın</b> · İlan Tarama</div>
+  <div class="nav">
+    <a class="active" href="/">CRM</a>
+    <a href="/portfolio" target="_blank">Müşteri Portföyü ↗</a>
+  </div>
+  <button class="themebtn" id="themebtn" onclick="toggleTheme()">☀️ Açık</button>
+  <div class="live"><span class="dot"></span> canlı · <span id="upd">—</span></div>
+</div>
+
+<div class="metrics" id="metrics"></div>
+<div class="chartwrap"><div class="chart"><h4>📍 İlçe Dağılımı</h4><div id="chart"></div></div></div>
+
+<div class="tabs">
+  <button class="tab active" data-mode="all">🏠 Tüm Ev Sahibi İlanları</button>
+  <button class="tab alert" data-mode="expiring">⏳ Dolmaya Yakın (25-31 gün)</button>
+  <button class="tab" data-mode="new">🆕 Yeni (24 saat)</button>
+  <button class="tab" data-mode="portfolio">⭐ Portföydekiler</button>
+</div>
+<div class="toolbar">
+  <input class="grow" id="q" placeholder="🔎 başlık / mahalle ara..." />
+  <select id="district"><option value="">Tüm İlçeler</option></select>
+  <select id="type"><option value="">Tüm Türler</option></select>
+  <select id="status"><option value="">Tüm Durumlar</option></select>
+  <select id="sort">
+    <option value="new">En Yeni Eklenen</option>
+    <option value="days_left_asc">Kalan gün (az→çok)</option>
+    <option value="price_desc">Fiyat (yüksek→düşük)</option>
+    <option value="price_asc">Fiyat (düşük→yüksek)</option>
+  </select>
+  <span class="muted" id="count"></span>
+</div>
+<div class="wrap">
+  <table>
+    <thead><tr>
+      <th>Görsel</th><th>Tür</th><th>Başlık</th><th>Fiyat</th><th>İlçe / Mahalle</th>
+      <th>m² · Oda</th><th>Tarih</th><th>Yaş</th><th>Kalan</th><th>Telefon</th><th>Durum</th><th>Portföy</th><th>İlan</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="empty" id="empty">Veri bekleniyor…</div>
+</div>
+
+<script>
+let MODE='all', ALL=[];
+const STATUSES=['Yeni','Arandı','İzin Verdi','Reddetti','Ulaşılamadı'];
+const $=(s)=>document.querySelector(s);
+function toggleTheme(){const l=document.documentElement.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');$('#themebtn').textContent=l?'🌙 Koyu':'☀️ Açık';}
+if(document.documentElement.classList.contains('light'))setTimeout(()=>$('#themebtn').textContent='🌙 Koyu',0);
+const fmt=(n)=>n==null||n===''?'':Number(n).toLocaleString('tr-TR');
+const waLink=(p)=>{ const d=(p||'').replace(/\D/g,'').replace(/^0/,''); return d?`https://wa.me/90${d}`:''; };
+
+async function upd(id, field, value){
+  await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fields:{[field]:value}})});
+  const r=ALL.find(x=>String(x.id)===String(id)); if(r) r[field]=value;
+  if(field==='shared'||field==='status') render(); loadStats();
+}
+async function loadStats(){
+  try{ const s=await fetch('/api/stats').then(r=>r.json());
+    $('#metrics').innerHTML=[
+      ['🏠',s.total,'Toplam İlan',''],['🆕',s.new24h,'Yeni (24 saat)','new'],
+      ['⏳',s.expiring,'Dolmaya Yakın','hot'],['📞',s.withPhone,'Telefonlu',''],
+      ['⭐',s.portfolio,'Portföyde',''],['📩',s.inquiries,'Müşteri Talebi',''],
+      ['☎️',s.arananlar,'İşlenen (arandı)','warn'],['🗺️',s.districts,'İlçe','']
+    ].map(([i,n,l,c])=>`<div class="mcard ${c}"><div class="ico">${i}</div><div class="num">${fmt(n)}</div><div class="lbl">${l}</div></div>`).join('');
+    const mx=Math.max(1,...s.byDistrict.map(d=>d.c));
+    $('#chart').innerHTML=s.byDistrict.map(d=>`<div class="bar"><span class="nm">${d.district}</span><span class="track"><span class="fill" style="width:${d.c/mx*100}%"></span></span><span class="v">${d.c}</span></div>`).join('')||'<span class="muted">—</span>';
+  }catch(e){}
+}
+async function load(){
+  try{ ALL=await fetch('/api/listings?seller=sahibinden').then(r=>r.json()); fillFilters(); render();
+    $('#upd').textContent=new Date().toLocaleTimeString('tr-TR'); }catch(e){}
+  loadStats();
+}
+function fillFilters(){
+  const d=$('#district'),t=$('#type'); const cur={d:d.value,t:t.value};
+  const U=(k)=>[...new Set(ALL.map(x=>x[k]).filter(Boolean))].sort();
+  d.innerHTML='<option value="">Tüm İlçeler</option>'+U('district').map(v=>`<option ${v===cur.d?'selected':''}>${v}</option>`).join('');
+  t.innerHTML='<option value="">Tüm Türler</option>'+U('property_type').map(v=>`<option ${v===cur.t?'selected':''}>${v}</option>`).join('');
+  if($('#status').children.length<=1) $('#status').innerHTML='<option value="">Tüm Durumlar</option>'+STATUSES.map(s=>`<option>${s}</option>`).join('');
+}
+function leftClass(n){return n==null?'muted':n<=3?'left-crit':n<=7?'left-warn':'left-ok'}
+function render(){
+  let r=ALL.slice();
+  const q=$('#q').value.trim().toLowerCase(),d=$('#district').value,t=$('#type').value,st=$('#status').value,s=$('#sort').value;
+  if(q)r=r.filter(x=>((x.title||'')+' '+(x.neighborhood||'')).toLowerCase().includes(q));
+  if(d)r=r.filter(x=>x.district===d); if(t)r=r.filter(x=>x.property_type===t); if(st)r=r.filter(x=>(x.status||'Yeni')===st);
+  if(MODE==='expiring')r=r.filter(x=>x.days_on_site>=25&&x.days_on_site<=31);
+  if(MODE==='portfolio')r=r.filter(x=>x.shared==1);
+  if(MODE==='new'){const c=Date.now()-864e5;r=r.filter(x=>x.first_seen&&new Date(x.first_seen).getTime()>=c);}
+  const by={new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};
+  r.sort(by[s]||by.new);
+  $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
+  $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr>
+    <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer">`:''}</td>
+    <td><span class="badge b-tur">${x.property_type||'-'}</span></td>
+    <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a></td>
+    <td class="price">${x.price?fmt(x.price)+' ₺':''}</td>
+    <td>${x.district||''}<div class="muted">${x.neighborhood||''}</div></td>
+    <td>${x.area_m2?x.area_m2+' m²':''}${x.rooms?' · '+x.rooms:''}</td>
+    <td class="muted">${x.listing_date||''}</td><td>${x.days_on_site??''}</td>
+    <td class="${leftClass(x.days_left)}">${x.days_left??''}</td>
+    <td>${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:'<span class="muted">—</span>'}</td>
+    <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>
+    <td><a class="go" href="${x.url}" target="_blank">Aç ↗</a></td></tr>`}).join('');
+}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');MODE=b.dataset.mode;render();});
+['q','district','type','status','sort'].forEach(id=>$('#'+id).addEventListener('input',render));
+load(); setInterval(load,15000);
+</script>
+</body>
+</html>

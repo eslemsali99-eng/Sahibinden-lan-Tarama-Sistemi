@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bircan Akın · Portföy</title>
+<style>
+  :root{ --bg:#f6f7fb; --card:#fff; --ink:#1a2238; --mut:#6b7280; --acc:#b8860b; --acc2:#1f3a5f; --line:#e6e8ef; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--acc2);color:#fff;padding:18px 26px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:30}
+  .brand{font-size:20px;font-weight:800;letter-spacing:.5px}
+  .brand b{color:#e9c46a}
+  .langs{margin-inline-start:auto;display:flex;gap:6px}
+  .lang{padding:6px 12px;border:1px solid rgba(255,255,255,.3);border-radius:20px;cursor:pointer;font-size:13px;background:transparent;color:#fff}
+  .lang.active{background:#e9c46a;color:#1f3a5f;font-weight:700;border-color:#e9c46a}
+  .cartBtn{padding:8px 16px;border-radius:22px;background:#e9c46a;color:#1f3a5f;font-weight:700;border:none;cursor:pointer;font-size:14px}
+  .hero{padding:26px;text-align:center}
+  .hero h1{margin:0 0 6px;font-size:26px}
+  .hero p{margin:0;color:var(--mut)}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:8px 26px 20px}
+  select,input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:#fff;color:var(--ink)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px;padding:0 26px 60px;max-width:1400px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(20,30,60,.05);transition:.15s}
+  .card:hover{box-shadow:0 8px 26px rgba(20,30,60,.12);transform:translateY(-2px)}
+  .card .img{height:190px;background:#e9edf5 center/cover no-repeat;position:relative}
+  .tag{position:absolute;top:10px;inset-inline-start:10px;background:rgba(31,58,95,.92);color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
+  .price{font-size:20px;font-weight:800;color:var(--acc2)}
+  .loc{color:var(--mut);font-size:13px}
+  .meta{display:flex;gap:14px;font-size:13px;color:var(--ink);flex-wrap:wrap}
+  .ttl{font-size:13px;color:var(--ink);line-height:1.35;max-height:38px;overflow:hidden}
+  .add{margin-top:auto;border:none;background:var(--acc2);color:#fff;padding:11px;border-radius:10px;font-weight:700;cursor:pointer;font-size:14px}
+  .add.in{background:#2e7d32}
+  .empty{grid-column:1/-1;text-align:center;color:var(--mut);padding:80px}
+  /* cart drawer */
+  .drawer{position:fixed;top:0;inset-inline-end:0;width:380px;max-width:92vw;height:100vh;background:#fff;box-shadow:-6px 0 30px rgba(0,0,0,.18);transform:translateX(110%);transition:.25s;z-index:50;display:flex;flex-direction:column}
+  html[dir=rtl] .drawer{transform:translateX(-110%)}
+  .drawer.open{transform:translateX(0)}
+  .drawer h3{margin:0;padding:18px;border-bottom:1px solid var(--line)}
+  .citems{flex:1;overflow:auto;padding:10px}
+  .ci{display:flex;gap:10px;padding:8px;border-bottom:1px solid var(--line);align-items:center}
+  .ci img{width:64px;height:48px;object-fit:cover;border-radius:8px}
+  .ci .x{margin-inline-start:auto;cursor:pointer;color:#c00;font-weight:700;border:none;background:none;font-size:18px}
+  .form{padding:14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+  .form input,.form textarea{width:100%}
+  .form .send{background:var(--acc);color:#fff;border:none;padding:12px;border-radius:10px;font-weight:800;cursor:pointer;font-size:15px}
+  .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;display:none}
+  .backdrop.open{display:block}
+  .count{background:#e9c46a;color:#1f3a5f;border-radius:50%;padding:0 7px;font-size:12px;font-weight:800;margin-inline-start:4px}
+  .card{cursor:pointer}
+  /* detay modal */
+  .modal{position:fixed;inset:0;background:rgba(15,20,35,.6);z-index:60;display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.open{display:flex}
+  .sheet{background:#fff;border-radius:18px;max-width:880px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .sheet .hero-img{width:100%;height:420px;object-fit:cover;background:#e9edf5;border-radius:18px 18px 0 0;display:block}
+  .sheet .pad{padding:22px 26px}
+  .sheet .close{position:absolute;top:24px;inset-inline-end:24px;background:#fff;border:none;width:40px;height:40px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+  .sheet h2{margin:0 0 6px;font-size:24px;color:var(--acc2)}
+  .specs{display:flex;gap:22px;flex-wrap:wrap;margin:16px 0;color:var(--ink)}
+  .specs div{font-size:15px}.specs b{display:block;color:var(--mut);font-size:12px;font-weight:600}
+  .sheet .actions{display:flex;gap:12px;margin-top:18px;flex-wrap:wrap}
+  .sheet .actions button{flex:1;min-width:160px;padding:14px;border-radius:12px;border:none;font-weight:800;font-size:15px;cursor:pointer}
+  .b-cart{background:var(--acc2);color:#fff}.b-cart.in{background:#2e7d32}
+  .b-proc{background:var(--acc);color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🏛️ Bircan <b>Akın</b></div>
+  <button class="cartBtn" onclick="openCart()" id="cartToggle"></button>
+  <div class="langs">
+    <button class="lang active" data-l="tr">TR</button>
+    <button class="lang" data-l="en">EN</button>
+    <button class="lang" data-l="ar">AR</button>
+  </div>
+</header>
+
+<div class="hero"><h1 id="h-title"></h1><p id="h-sub"></p></div>
+<div class="filters">
+  <input id="q" oninput="render()" />
+  <select id="f-district" onchange="render()"></select>
+  <select id="f-type" onchange="render()"></select>
+  <select id="f-rooms" onchange="render()"></select>
+  <select id="f-sort" onchange="render()"></select>
+</div>
+<div class="grid" id="grid"></div>
+
+<div class="backdrop" id="backdrop" onclick="closeCart()"></div>
+<aside class="drawer" id="drawer">
+  <h3 id="d-title"></h3>
+  <div class="citems" id="citems"></div>
+  <form class="form" id="inq" onsubmit="return submitInquiry(event)">
+    <input name="name" id="i-name" required />
+    <input name="phone" id="i-phone" required />
+    <input name="email" id="i-email" type="email" />
+    <textarea name="message" id="i-msg" rows="2"></textarea>
+    <button class="send" id="i-send" type="submit"></button>
+  </form>
+</aside>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeDetail()">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<script>
+const T = {
+  tr:{title:'Seçkin Portföyümüz',sub:'İncelediğiniz mülkleri listenize ekleyin, süreci başlatalım.',q:'Ara...',allD:'Tüm İlçeler',allT:'Tüm Türler',allR:'Tüm Odalar',
+    sortP:'Fiyat (yüksek→düşük)',sortPa:'Fiyat (düşük→yüksek)',add:'Listeye Ekle',added:'✓ Listede',cart:'Listem',dtitle:'Seçtiğiniz Mülkler',empty:'Portföyde henüz ilan yok.',
+    name:'Ad Soyad',phone:'Telefon',email:'E-posta (opsiyonel)',msg:'Mesajınız (opsiyonel)',send:'Süreci Başlat',thanks:'Talebiniz alındı! En kısa sürede dönüş yapacağız.',cartEmpty:'Listeniz boş.'},
+  en:{title:'Our Curated Portfolio',sub:'Add the properties you like to your list and start the process.',q:'Search...',allD:'All Districts',allT:'All Types',allR:'All Rooms',
+    sortP:'Price (high→low)',sortPa:'Price (low→high)',add:'Add to List',added:'✓ In List',cart:'My List',dtitle:'Your Selected Properties',empty:'No listings in portfolio yet.',
+    name:'Full Name',phone:'Phone',email:'Email (optional)',msg:'Your message (optional)',send:'Start Process',thanks:'Request received! We will contact you shortly.',cartEmpty:'Your list is empty.'},
+  ar:{title:'محفظتنا المختارة',sub:'أضف العقارات التي تعجبك إلى قائمتك ولنبدأ العملية.',q:'بحث...',allD:'كل المناطق',allT:'كل الأنواع',allR:'كل الغرف',
+    sortP:'السعر (الأعلى→الأقل)',sortPa:'السعر (الأقل→الأعلى)',add:'أضف إلى القائمة',added:'✓ في القائمة',cart:'قائمتي',dtitle:'العقارات المختارة',empty:'لا توجد عقارات بعد.',
+    name:'الاسم الكامل',phone:'الهاتف',email:'البريد الإلكتروني (اختياري)',msg:'رسالتك (اختياري)',send:'ابدأ العملية',thanks:'تم استلام طلبك! سنتواصل معك قريباً.',cartEmpty:'قائمتك فارغة.'},
+};
+const TYPE = {
+  'Konut':{en:'Residential',ar:'سكني'},'Daire':{en:'Apartment',ar:'شقة'},'Villa':{en:'Villa',ar:'فيلا'},'Müstakil Ev':{en:'Detached House',ar:'منزل مستقل'},
+  'Rezidans':{en:'Residence',ar:'ريزيدنس'},'Arsa':{en:'Land',ar:'أرض'},'Tarla':{en:'Field',ar:'حقل'},'İşyeri':{en:'Commercial',ar:'تجاري'},
+  'Fabrika':{en:'Factory',ar:'مصنع'},'Dükkan/Mağaza':{en:'Shop',ar:'متجر'},'Ofis':{en:'Office',ar:'مكتب'},'Yazlık':{en:'Summer House',ar:'منزل صيفي'},'Depo':{en:'Warehouse',ar:'مستودع'},'Bağ/Bahçe':{en:'Garden',ar:'حديقة'},'Devremülk':{en:'Timeshare',ar:'تايم شير'}
+};
+let L='tr', ALL=[], CART=JSON.parse(localStorage.getItem('cart')||'[]');
+const $=(s)=>document.querySelector(s);
+const fmt=(n)=>Number(n||0).toLocaleString(L==='ar'?'ar-EG':L==='en'?'en-US':'tr-TR');
+const typeName=(t)=> L==='tr'?t:((TYPE[t]&&TYPE[t][L])||t);
+const dispTitle=(x)=>{ const p=[typeName(x.property_type)]; if(x.rooms)p.push(x.rooms); if(x.area_m2)p.push(x.area_m2+' m²'); return p.join(' · '); };
+
+async function load(){ ALL=await fetch('/api/portfolio').then(r=>r.json()); fillFilters(); applyLang(); render(); }
+function fillFilters(){
+  const U=(k)=>[...new Set(ALL.map(x=>x[k]).filter(Boolean))].sort();
+  const t=T[L];
+  $('#f-district').innerHTML=`<option value="">${t.allD}</option>`+U('district').map(v=>`<option>${v}</option>`).join('');
+  $('#f-type').innerHTML=`<option value="">${t.allT}</option>`+U('property_type').map(v=>`<option value="${v}">${typeName(v)}</option>`).join('');
+  $('#f-rooms').innerHTML=`<option value="">${t.allR}</option>`+U('rooms').map(v=>`<option>${v}</option>`).join('');
+  $('#f-sort').innerHTML=`<option value="pd">${t.sortP}</option><option value="pa">${t.sortPa}</option>`;
+}
+function applyLang(){
+  const t=T[L];
+  document.documentElement.lang=L; document.documentElement.dir = L==='ar'?'rtl':'ltr';
+  $('#h-title').textContent=t.title; $('#h-sub').textContent=t.sub; $('#q').placeholder=t.q;
+  $('#d-title').textContent=t.dtitle; $('#i-name').placeholder=t.name; $('#i-phone').placeholder=t.phone;
+  $('#i-email').placeholder=t.email; $('#i-msg').placeholder=t.msg; $('#i-send').textContent=t.send;
+  updateCartBtn();
+}
+function updateCartBtn(){ $('#cartToggle').innerHTML=`🧺 ${T[L].cart}<span class="count">${CART.length}</span>`; }
+function render(){
+  const t=T[L], q=$('#q').value.toLowerCase(), d=$('#f-district').value, ty=$('#f-type').value, rm=$('#f-rooms').value, s=$('#f-sort').value;
+  let r=ALL.filter(x=>(!q||((x.title||'')+(x.neighborhood||'')).toLowerCase().includes(q))&&(!d||x.district===d)&&(!ty||x.property_type===ty)&&(!rm||x.rooms===rm));
+  r.sort((a,b)=>s==='pa'?(a.price||0)-(b.price||0):(b.price||0)-(a.price||0));
+  $('#grid').innerHTML = r.length? r.map(card).join('') : `<div class="empty">${t.empty}</div>`;
+}
+function card(x){
+  const inCart=CART.includes(String(x.id)), t=T[L];
+  return `<div class="card" onclick="openDetail('${x.id}')">
+    <div class="img" style="background-image:url('${x.image_url||''}')"><span class="tag">${typeName(x.property_type)}</span></div>
+    <div class="body">
+      <div class="price">${x.price?fmt(x.price)+' ₺':'-'}</div>
+      <div class="loc">📍 ${x.district||''}${x.neighborhood?' · '+x.neighborhood:''}</div>
+      <div class="meta">${x.area_m2?`<span>📐 ${x.area_m2} m²</span>`:''}${x.rooms?`<span>🚪 ${x.rooms}</span>`:''}</div>
+      <div class="ttl">${dispTitle(x)}</div>
+      <button class="add ${inCart?'in':''}" onclick="event.stopPropagation();toggleCart('${x.id}')">${inCart?t.added:t.add}</button>
+    </div></div>`;
+}
+const LBL={tr:{kind:'Tür',rooms:'Oda',date:'İlan Tarihi',area:'Alan'},en:{kind:'Type',rooms:'Rooms',date:'Listed',area:'Area'},ar:{kind:'النوع',rooms:'الغرف',date:'التاريخ',area:'المساحة'}};
+function openDetail(id){
+  const x=ALL.find(r=>String(r.id)===String(id)); if(!x)return;
+  const t=T[L], lb=LBL[L], inCart=CART.includes(String(x.id));
+  $('#sheet').innerHTML=`<div style="position:relative">
+    <img class="hero-img" src="${x.image_url||''}" referrerpolicy="no-referrer">
+    <button class="close" onclick="closeDetail()">×</button></div>
+    <div class="pad">
+      <h2>${x.price?fmt(x.price)+' ₺':''}</h2>
+      <div class="loc">📍 ${x.district||''}${x.neighborhood?' · '+x.neighborhood:''}</div>
+      <div class="specs">
+        <div><b>${lb.kind}</b>${typeName(x.property_type)}</div>
+        ${x.area_m2?`<div><b>${lb.area}</b>${x.area_m2} m²</div>`:''}
+        ${x.rooms?`<div><b>${lb.rooms}</b>${x.rooms}</div>`:''}
+        ${x.listing_date?`<div><b>${lb.date}</b>${x.listing_date}</div>`:''}
+      </div>
+      <h3 style="margin:6px 0 0;color:#1a2238">${dispTitle(x)}</h3>
+      <div class="actions">
+        <button class="b-cart ${inCart?'in':''}" onclick="toggleCart('${x.id}');openDetail('${x.id}')">${inCart?t.added:t.add}</button>
+        <button class="b-proc" onclick="closeDetail();openCart()">${t.send}</button>
+      </div>
+    </div>`;
+  $('#modal').classList.add('open');
+}
+function closeDetail(){ $('#modal').classList.remove('open'); }
+function toggleCart(id){ id=String(id); const i=CART.indexOf(id); if(i>=0)CART.splice(i,1); else CART.push(id); localStorage.setItem('cart',JSON.stringify(CART)); updateCartBtn(); render(); if($('#drawer').classList.contains('open'))renderCart(); }
+function openCart(){ renderCart(); $('#drawer').classList.add('open'); $('#backdrop').classList.add('open'); }
+function closeCart(){ $('#drawer').classList.remove('open'); $('#backdrop').classList.remove('open'); }
+function renderCart(){
+  const items=ALL.filter(x=>CART.includes(String(x.id)));
+  $('#citems').innerHTML = items.length? items.map(x=>`<div class="ci"><img src="${x.image_url||''}"><div><div style="font-weight:700">${x.price?fmt(x.price)+' ₺':''}</div><div style="font-size:12px;color:#6b7280">${x.district||''} · ${typeName(x.property_type)}</div></div><button class="x" onclick="toggleCart('${x.id}')">×</button></div>`).join('') : `<div class="empty">${T[L].cartEmpty}</div>`;
+}
+async function submitInquiry(e){
+  e.preventDefault();
+  const payload={name:$('#i-name').value,phone:$('#i-phone').value,email:$('#i-email').value,message:$('#i-msg').value,lang:L,item_ids:CART};
+  await fetch('/api/inquiry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  alert(T[L].thanks); CART=[]; localStorage.setItem('cart','[]'); updateCartBtn(); render(); renderCart(); closeCart(); e.target.reset();
+  return false;
+}
+document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{ document.querySelectorAll('.lang').forEach(x=>x.classList.remove('active')); b.classList.add('active'); L=b.dataset.l; fillFilters(); applyLang(); render(); });
+load();
+</script>
+</body>
+</html>

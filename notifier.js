@@ -1,0 +1,68 @@
+// notifier.js — yeni ilan / fiyat düşüşü bildirimleri. Telegram + ücretsiz WhatsApp (CallMeBot).
+// Ayar: output/notify.json -> { enabled, telegram:{token,chatIds[]}, whatsapp:[{phone,apikey}] }
+const fs = require('fs');
+const path = require('path');
+const cfg = require('./config');
+
+const NOTIFY_FILE = path.join(cfg.OUTPUT_DIR, 'notify.json');
+function load() {
+  try { return JSON.parse(fs.readFileSync(NOTIFY_FILE, 'utf8')); }
+  catch { return { enabled: false, telegram: { token: '', chatIds: [] }, whatsapp: [] }; }
+}
+
+async function sendTelegram(token, chatId, text) {
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: false }),
+    });
+  } catch (e) { console.log('[notify] telegram hata:', e.message); }
+}
+async function sendWhatsApp(phone, apikey, text) {
+  try {
+    const u = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${apikey}`;
+    await fetch(u);
+  } catch (e) { console.log('[notify] whatsapp hata:', e.message); }
+}
+
+// genel mesaj
+async function send(text) {
+  const c = load();
+  if (!c.enabled) return;
+  const jobs = [];
+  if (c.telegram && c.telegram.token) for (const id of (c.telegram.chatIds || [])) jobs.push(sendTelegram(c.telegram.token, id, text));
+  for (const w of (c.whatsapp || [])) if (w.phone && w.apikey) jobs.push(sendWhatsApp(w.phone, w.apikey, text));
+  await Promise.allSettled(jobs);
+}
+
+// yeni ilanlar icin ozet mesaj (spam yapmamak icin tek mesajda topla)
+async function notifyNew(listings) {
+  if (!listings.length) return;
+  const c = load(); if (!c.enabled) return;
+  const top = listings.slice(0, 8);
+  const lines = top.map((x) => {
+    const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
+    const tip = x.property_type || '';
+    const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
+    return `🏠 <b>${price}</b> ${tip} — ${yer}\n${x.url}`;
+  });
+  const more = listings.length > top.length ? `\n…ve ${listings.length - top.length} ilan daha` : '';
+  const header = `🚨 <b>${listings.length} YENİ EV SAHİBİ İLANI</b> (Sahibinden)\nİlk arayan ol! 📞\n\n`;
+  await send(header + lines.join('\n\n') + more);
+}
+
+// fiyat düşüşü bildirimi
+async function notifyPriceDrops(drops) {
+  if (!drops.length) return;
+  const c = load(); if (!c.enabled) return;
+  const lines = drops.slice(0, 8).map((x) => {
+    const yeni = Number(x.price).toLocaleString('tr-TR');
+    const eski = Number(x.oldPrice).toLocaleString('tr-TR');
+    const fark = Math.round((1 - x.price / x.oldPrice) * 100);
+    const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
+    return `📉 <b>%${fark} indirim</b>\n<s>${eski} ₺</s> → <b>${yeni} ₺</b>\n${x.property_type || ''} — ${yer}\n${x.url}`;
+  });
+  await send(`💰 <b>${drops.length} İLANDA FİYAT DÜŞTÜ</b> — pazarlığa açık olabilir! 📞\n\n` + lines.join('\n\n'));
+}
+
+module.exports = { send, notifyNew, notifyPriceDrops, load };

@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "telegram": { "token": "BOTFATHER_TOKEN", "chatIds": [-1001234567890] },
+  "whatsapp": [ { "phone": "9053XXXXXXXX", "apikey": "CALLMEBOT_APIKEY" } ]
+}
