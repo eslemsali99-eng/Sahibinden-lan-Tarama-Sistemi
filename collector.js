@@ -152,6 +152,7 @@ async function handle(req, res) {
       needVerify: await c("SELECT COUNT(*) c FROM listings WHERE removed=1 AND (verify_status IS NULL OR verify_status='Teyit Bekliyor')"),
       districts: await c('SELECT COUNT(DISTINCT district) c FROM listings WHERE is_active=1'),
       byDistrict: await all('SELECT district, COUNT(*) c FROM listings WHERE is_active=1 GROUP BY district ORDER BY c DESC'),
+      lastScrape: (await get('SELECT MAX(last_seen) m FROM listings')).m || null,
     };
     return sendJSON(res, 200, stats);
   }
@@ -164,11 +165,13 @@ async function handle(req, res) {
   // --- CRM: ilan alanı güncelle ---
   if (req.method === 'POST' && pathOnly === '/api/update') {
     const body = await readBody(req);
-    const { id, fields } = JSON.parse(body);
+    const { id, fields, by } = JSON.parse(body);
     const allow = ['status', 'notes', 'assignee', 'shared', 'verify_status'];
     const sets = [], vals = [];
     for (const k of allow) if (k in fields) { sets.push(`${k}=?`); vals.push(fields[k]); }
     if ('shared' in fields && fields.shared) { sets.push('consent_date=?'); vals.push(new Date().toISOString()); }
+    // durum/teyit değişiminde kim+ne zaman kaydet (hesap verebilirlik)
+    if (('status' in fields) || ('verify_status' in fields)) { sets.push('status_by=?'); vals.push(by || ''); sets.push('status_at=?'); vals.push(new Date().toISOString()); }
     if (sets.length) { vals.push(String(id)); await run(`UPDATE listings SET ${sets.join(',')} WHERE id=?`, vals); }
     return sendJSON(res, 200, { ok: true });
   }

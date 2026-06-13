@@ -33,6 +33,11 @@
   .bar.top .fill{background:linear-gradient(90deg,var(--gold),#f4d98a)}
   .bar .v{width:84px;text-align:right;font-weight:800}.bar .v small{color:var(--mut);font-weight:600;font-size:11px;margin-inline-start:5px}
   .b-new{background:var(--green);color:#063;font-size:9.5px;padding:2px 6px;border-radius:20px;font-weight:800;margin-inline-start:6px;vertical-align:middle}
+  .b-hot{margin-inline-start:6px;font-size:13px}
+  .b-dup{background:var(--amber);color:#3a2400;font-size:9.5px;padding:2px 6px;border-radius:20px;font-weight:800;margin-inline-start:6px;vertical-align:middle}
+  .meinput{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:8px;padding:7px 10px;font-size:13px;width:120px}
+  .meinput::placeholder{color:rgba(255,255,255,.6)}
+  .byline{font-size:10px;color:var(--mut);margin-top:2px}
   body.no-phone .col-phone{display:none}
   td.sysdate{color:var(--badgetx);font-weight:700;white-space:nowrap}
   .tabs{display:flex;gap:7px;padding:6px 22px 0;flex-wrap:wrap}
@@ -75,8 +80,9 @@
     <a class="active" href="/">CRM</a>
     <a href="/portfolio" target="_blank">Müşteri Portföyü ↗</a>
   </div>
+  <input id="me" class="meinput" placeholder="👤 Adın" />
   <button class="themebtn" id="themebtn" onclick="toggleTheme()">☀️ Açık</button>
-  <div class="live"><span class="dot"></span> canlı · <span id="upd">—</span></div>
+  <div class="live"><span class="dot"></span> canlı · <span id="upd">—</span><span id="fresh"></span></div>
 </div>
 
 <div class="metrics" id="metrics"></div>
@@ -95,6 +101,7 @@
   <select id="type"><option value="">Tüm Türler</option></select>
   <select id="status"><option value="">Tüm Durumlar</option></select>
   <select id="sort">
+    <option value="heat">🔥 Arama Önceliği</option>
     <option value="new">En Yeni Eklenen</option>
     <option value="days_left_asc">Kalan gün (az→çok)</option>
     <option value="price_desc">Fiyat (yüksek→düşük)</option>
@@ -125,10 +132,28 @@ const waLink=(p)=>{ const d=(p||'').replace(/\D/g,'').replace(/^0/,''); return d
 const fmtDate=(iso)=>{ if(!iso)return''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
 const isNew=(x)=>x.first_seen&&(Date.now()-new Date(x.first_seen).getTime()<864e5);
 
+let DUP=new Set();
+// arama önceliği skoru (sıcaklık): dolmaya yakın + telefonlu + henüz aranmamış + yeni
+function heat(x){
+  if(x.removed==1) return 0;
+  let s=0;
+  if(x.days_on_site>=25&&x.days_on_site<=31) s+=50; else if(x.days_on_site>=20) s+=25;
+  if(x.phone) s+=20;
+  if((x.status||'Yeni')==='Yeni') s+=15;
+  if(isNew(x)) s+=15;
+  return s;
+}
+// aynı mülk birden çok ilanda mı? (mahalle+m²+oda+fiyat aynıysa)
+function computeDups(){
+  const m={}; DUP=new Set();
+  ALL.forEach(x=>{ if(x.area_m2&&x.price&&x.neighborhood){ const k=`${x.neighborhood}|${x.area_m2}|${x.rooms||''}|${x.price}`; (m[k]=m[k]||[]).push(String(x.id)); }});
+  Object.values(m).forEach(ids=>{ if(ids.length>1) ids.forEach(id=>DUP.add(id)); });
+}
 async function upd(id, field, value){
-  await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fields:{[field]:value}})});
-  const r=ALL.find(x=>String(x.id)===String(id)); if(r) r[field]=value;
-  if(field==='shared'||field==='status') render(); loadStats();
+  const me=localStorage.getItem('bircan_me')||'';
+  await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fields:{[field]:value},by:me})});
+  const r=ALL.find(x=>String(x.id)===String(id)); if(r){ r[field]=value; if(field==='status'||field==='verify_status'){ r.status_by=me; r.status_at=new Date().toISOString(); } }
+  if(field==='shared'||field==='status'||field==='verify_status') render(); loadStats();
 }
 async function loadStats(){
   try{ const s=await fetch('/api/stats').then(r=>r.json());
@@ -140,10 +165,11 @@ async function loadStats(){
     ].map(([i,n,l,c])=>`<div class="mcard ${c}"><div class="ico">${i}</div><div class="num">${fmt(n)}</div><div class="lbl">${l}</div></div>`).join('');
     const mx=Math.max(1,...s.byDistrict.map(d=>d.c)); const tot=s.byDistrict.reduce((a,d)=>a+d.c,0)||1;
     $('#chart').innerHTML=s.byDistrict.map(d=>`<div class="bar${d.c===mx?' top':''}"><span class="nm">${d.district}</span><span class="track"><span class="fill" style="width:${d.c/mx*100}%"></span></span><span class="v">${fmt(d.c)}<small>%${Math.round(d.c/tot*100)}</small></span></div>`).join('')||'<span class="muted">—</span>';
+    if(s.lastScrape){ const h=(Date.now()-new Date(s.lastScrape).getTime())/3.6e6; const c=h<2?'var(--green)':h<24?'var(--amber)':'var(--red)'; $('#fresh').innerHTML=` · <span style="color:${c}">⟳ tarama ${h<1?Math.round(h*60)+'dk':Math.round(h)+'sa'} önce</span>`; }
   }catch(e){}
 }
 async function load(){
-  try{ ALL=await fetch('/api/listings?seller=sahibinden').then(r=>r.json()); fillFilters(); render();
+  try{ ALL=await fetch('/api/listings?seller=sahibinden').then(r=>r.json()); computeDups(); fillFilters(); render();
     $('#upd').textContent=new Date().toLocaleTimeString('tr-TR'); handleDeepLink(); }catch(e){}
   loadStats();
 }
@@ -175,27 +201,29 @@ function render(){
   if(MODE==='expiring')r=r.filter(x=>x.days_on_site>=25&&x.days_on_site<=31);
   if(MODE==='portfolio')r=r.filter(x=>x.shared==1);
   if(MODE==='new'){const c=Date.now()-864e5;r=r.filter(x=>x.first_seen&&new Date(x.first_seen).getTime()>=c);}
-  const by={new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};
-  r.sort(by[s]||by.new);
+  const by={heat:(a,b)=>heat(b)-heat(a),new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};
+  r.sort(by[s]||by.heat);
   document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone));
   $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
   $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr data-id="${x.id}">
     <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer">`:''}</td>
     <td><span class="badge b-tur">${x.property_type||'-'}</span></td>
-    <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a>${isNew(x)?'<span class="b-new">YENİ</span>':''}</td>
+    <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a>${isNew(x)?'<span class="b-new">YENİ</span>':''}${heat(x)>=70?'<span class="b-hot" title="Arama önceliği yüksek">🔥</span>':''}${DUP.has(String(x.id))?'<span class="b-dup">⚠️ mükerrer</span>':''}</td>
     <td class="price">${x.price?fmt(x.price)+' ₺':''}</td>
     <td>${x.district||''}<div class="muted">${x.neighborhood||''}</div></td>
     <td>${x.area_m2?x.area_m2+' m²':''}${x.rooms?' · '+x.rooms:''}</td>
     <td class="muted">${x.listing_date||''}</td><td class="sysdate">${fmtDate(x.first_seen)}</td><td>${x.days_on_site??''}</td>
     <td class="${leftClass(x.days_left)}">${x.days_left??''}</td>
     <td class="col-phone">${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:'<span class="muted">—</span>'}</td>
-    <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select>${x.status_by?`<div class="byline">👤 ${x.status_by} · ${fmtDate(x.status_at)}</div>`:''}</td>
     <td>${x.removed==1?`<select class="stsel" onchange="upd('${x.id}','verify_status',this.value)">${VERIFY.map(v=>`<option ${(x.verify_status||'Teyit Bekliyor')===v?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>'}</td>
     <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>
     <td><a class="go" href="${x.url}" target="_blank">Aç ↗</a></td></tr>`}).join('');
 }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');MODE=b.dataset.mode;render();});
 ['q','district','type','status','sort'].forEach(id=>$('#'+id).addEventListener('input',render));
+$('#me').value=localStorage.getItem('bircan_me')||'';
+$('#me').addEventListener('input',e=>localStorage.setItem('bircan_me',e.target.value.trim()));
 load(); setInterval(load,15000);
 </script>
 </body>

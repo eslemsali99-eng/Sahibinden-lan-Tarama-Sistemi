@@ -43,6 +43,7 @@ const EXTRA_COLS = [
   ['status', "TEXT DEFAULT 'Yeni'"], ['notes', 'TEXT'], ['assignee', 'TEXT'],
   ['shared', 'INTEGER DEFAULT 0'], ['consent_date', 'TEXT'], ['verified_owner', 'INTEGER'],
   ['removed', 'INTEGER DEFAULT 0'], ['removed_date', 'TEXT'], ['verify_status', 'TEXT'], ['last_check', 'TEXT'],
+  ['status_by', 'TEXT'], ['status_at', 'TEXT'], // kim / ne zaman durum değiştirdi (hesap verebilirlik)
 ];
 
 let ready = null;

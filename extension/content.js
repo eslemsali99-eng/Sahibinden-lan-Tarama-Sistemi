@@ -155,12 +155,14 @@
   const AUTO_MS = 60 * 60 * 1000;
   let autoTimer = null;
   async function incremental() {
+    const bu = +(localStorage.getItem('bircan_blocked_until') || 0);
+    if (Date.now() < bu) { log(`⏸️ blok sonrası bekleme — ~${Math.ceil((bu - Date.now()) / 3.6e6)} saat sonra denenecek`, '#fa0'); return; }
     log(`🔄 oto-tarama turu ${new Date().toLocaleTimeString('tr-TR')}`, '#9cf');
     for (const d of DISTRICTS) {
       const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden' };
       for (let p = 0; p < 2; p++) { // sadece ilk 2 sayfa = en yeniler
         const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
-        if (!res.ok) return;
+        if (!res.ok) { localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6)); log('🚫 doğrulama/blok — IP dinlensin diye 3 saat beklenip tekrar denenecek', '#f55'); return; }
         const rows = parsePage(res.doc); if (!rows.length) break;
         try { const r = await jpost(ING, { meta, rows }); if (r && r.fresh) log(`   +${r.fresh} yeni (${d.name})`, '#0f0'); } catch (e) { return; }
         await sleep(rnd(PAGE_MIN, PAGE_MAX));
@@ -185,7 +187,7 @@
     for (const it of list) {
       const url = it.url.startsWith('http') ? it.url : BASE + it.url;
       const r = await checkOne(url);
-      if (r.challenge) { log('⏸️ doğrulama — kontrol yarın devam eder', '#f55'); break; }
+      if (r.challenge) { localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6)); log('🚫 doğrulama — IP dinlensin diye 3 saat beklenecek', '#f55'); break; }
       if (r.removed) { removed.push(it.id); gone++; }
       else if (r.active) { active.push(it.id); if (r.phone) { phones++; try { await jpost(U('/api/enrich'), { id: it.id, phone: r.phone, ownership_type: r.tapu, verified_owner: 1 }); } catch (e) {} } }
       if (removed.length >= 10) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }

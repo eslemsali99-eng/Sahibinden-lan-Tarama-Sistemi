@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bircan Akın · İlan Tarama",
-  "version": "2.3",
+  "version": "2.4",
   "description": "Sahibinden ilan listelerini Bircan Akın CRM toplayıcısına aktarır.",
   "content_scripts": [
     {
