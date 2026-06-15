@@ -92,7 +92,8 @@ async function handle(req, res) {
     const body = await readBody(req);
     const { meta, rows } = JSON.parse(body);
     const recs = [];
-    for (const x of rows) { if (!x || !x.id) continue; const rec = normalize(meta, x); if (rec.category === 'Kiralık') continue; recs.push(rec); }
+    const ALLOWED = new Set(cfg.DISTRICTS.map((d) => d.name)); // sadece config'deki ilçeler (eski eklenti Yıldırım eklemesin)
+    for (const x of rows) { if (!x || !x.id) continue; const rec = normalize(meta, x); if (rec.category === 'Kiralık') continue; if (!ALLOWED.has(rec.district)) continue; recs.push(rec); }
     let exMap = new Map();
     if (recs.length) {
       const ids = recs.map((r) => r.id);
