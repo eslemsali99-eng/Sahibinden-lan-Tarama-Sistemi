@@ -44,6 +44,8 @@ const EXTRA_COLS = [
   ['shared', 'INTEGER DEFAULT 0'], ['consent_date', 'TEXT'], ['verified_owner', 'INTEGER'],
   ['removed', 'INTEGER DEFAULT 0'], ['removed_date', 'TEXT'], ['verify_status', 'TEXT'], ['last_check', 'TEXT'],
   ['status_by', 'TEXT'], ['status_at', 'TEXT'], // kim / ne zaman durum değiştirdi (hesap verebilirlik)
+  ['description', 'TEXT'], ['images', 'TEXT'], // ilan açıklaması + tüm görseller (JSON) — kalkanlar için kritik
+  ['contact_type', 'TEXT'], // 'phone' (telefon var) | 'message' (sahibinden telefonsuz, mesajla iletişim)
 ];
 
 let ready = null;

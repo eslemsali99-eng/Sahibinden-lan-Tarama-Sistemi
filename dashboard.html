@@ -62,6 +62,20 @@
   .empty{text-align:center;padding:60px;color:var(--mut)}
   @keyframes hlflash{0%,100%{background:transparent}25%{background:rgba(233,196,106,.45)}}
   tr.hl td{animation:hlflash 2.2s ease 2}
+  /* ilan detay modalı */
+  .dmodal{position:fixed;inset:0;background:rgba(8,12,26,.78);z-index:80;display:none;align-items:center;justify-content:center;padding:14px}
+  .dmodal.open{display:flex}
+  .dsheet{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:880px;width:100%;max-height:92vh;overflow:auto}
+  .dimgs{display:flex;gap:6px;overflow-x:auto;padding:10px;background:var(--tb1)}
+  .dimgs img{height:210px;border-radius:8px;object-fit:cover;background:#2a3658}
+  .dpad{padding:16px 22px}
+  .dclose{float:right;background:var(--panel2);border:none;color:var(--txt);width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;margin:8px}
+  .dsheet h2{margin:2px 0;color:var(--acc);font-size:23px}
+  .dgrid{display:flex;flex-wrap:wrap;gap:18px;margin:14px 0}
+  .dgrid>div b{display:block;color:var(--mut);font-size:11px;font-weight:600;margin-bottom:2px}
+  .ddesc{white-space:pre-wrap;background:var(--inputbg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:8px;max-height:260px;overflow:auto;font-size:13px;line-height:1.55}
+  .dact{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+  .dact a{padding:11px 16px;border-radius:9px;font-weight:700;text-decoration:none;font-size:13px}
   /* responsive / mobil */
   @media(max-width:760px){
     .topbar{gap:8px;padding:9px 12px;flex-wrap:wrap}.logo{font-size:13px} .nav a{padding:6px 9px;font-size:12px} .live{font-size:11px}
@@ -119,6 +133,8 @@
   </table>
   <div class="empty" id="empty">Veri bekleniyor…</div>
 </div>
+
+<div class="dmodal" id="dmodal" onclick="if(event.target===this)closeDetail()"><div class="dsheet" id="dsheet"></div></div>
 
 <script>
 let MODE='all', ALL=[];
@@ -178,12 +194,47 @@ function handleDeepLink(){
   if(deeplinkDone)return; deeplinkDone=true;
   const P=new URLSearchParams(location.search), tab=P.get('tab'), id=P.get('id');
   if(tab){ const tb=document.querySelector(`.tab[data-mode="${tab}"]`); if(tb)tb.click(); }
-  if(id) setTimeout(()=>highlightRow(id),350);
+  if(id) setTimeout(()=>{ highlightRow(id); openDetail(id); },350);
 }
 function highlightRow(id){
   const tr=document.querySelector(`tr[data-id="${(window.CSS&&CSS.escape)?CSS.escape(String(id)):id}"]`);
   if(tr){ tr.scrollIntoView({behavior:'smooth',block:'center'}); tr.classList.add('hl'); setTimeout(()=>tr.classList.remove('hl'),5000); }
 }
+// ilan detay modalı — tüm bilgiyi BİZİM sistemimizde göster (kalkanlar için kritik)
+function openDetail(id){
+  const x=ALL.find(r=>String(r.id)===String(id)); if(!x)return;
+  let imgs=[]; try{ imgs=x.images?JSON.parse(x.images):[]; }catch(e){} if(!imgs.length&&x.image_url)imgs=[x.image_url];
+  const wa=waLink(x.phone);
+  const phoneHtml = x.phone
+    ? `<a href="tel:${x.phone}" style="color:var(--green);font-weight:800;text-decoration:none">${x.phone}</a>${wa?` · <a class="wa" href="${wa}" target="_blank">WA</a>`:''}`
+    : (x.contact_type==='message'?'<span style="color:var(--amber);font-weight:700">✉️ Telefon yok — mesajla iletişim</span>':'<span class="muted">henüz çekilmedi</span>');
+  $('#dsheet').innerHTML=`
+    <button class="dclose" onclick="closeDetail()">×</button>
+    ${imgs.length?`<div class="dimgs">${imgs.map(u=>`<img src="${u}" referrerpolicy="no-referrer">`).join('')}</div>`:''}
+    <div class="dpad">
+      <h2>${x.price?fmt(x.price)+' ₺':''}</h2>
+      <div class="muted">📍 ${x.district||''}${x.neighborhood?' · '+x.neighborhood:''}${x.removed==1?' · <span style="color:var(--red);font-weight:700">YAYINDAN KALKTI</span>':''}</div>
+      <div class="dgrid">
+        <div><b>Tür</b>${x.property_type||'-'}</div>
+        <div><b>m²</b>${x.area_m2||'-'}</div>
+        <div><b>Oda</b>${x.rooms||'-'}</div>
+        <div><b>İlan Tarihi</b>${x.listing_date||'-'}</div>
+        <div><b>Sisteme</b>${fmtDate(x.first_seen)||'-'}</div>
+        <div><b>Telefon</b>${phoneHtml}</div>
+        ${x.ownership_type?`<div><b>Tapu</b>${x.ownership_type}</div>`:''}
+        ${x.status_by?`<div><b>Son işlem</b>${x.status_by} · ${fmtDate(x.status_at)}</div>`:''}
+      </div>
+      <div style="font-weight:700;font-size:14px">${x.title||''}</div>
+      ${x.description?`<div class="ddesc">${(x.description||'').replace(/</g,'&lt;')}</div>`:'<div class="muted" style="margin-top:10px">Açıklama henüz çekilmedi — 7/24 detay taramasında gelecek.</div>'}
+      <div class="dact">
+        ${x.url?`<a href="${x.url}" target="_blank" style="background:var(--acc);color:#fff">Sahibinden'de aç ↗</a>`:''}
+        ${wa?`<a href="${wa}" target="_blank" style="background:#25d366;color:#073">WhatsApp</a>`:''}
+      </div>
+    </div>`;
+  $('#dmodal').classList.add('open');
+}
+function closeDetail(){ $('#dmodal').classList.remove('open'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')closeDetail(); });
 function fillFilters(){
   const d=$('#district'),t=$('#type'); const cur={d:d.value,t:t.value};
   const U=(k)=>[...new Set(ALL.map(x=>x[k]).filter(Boolean))].sort();
@@ -203,10 +254,10 @@ function render(){
   if(MODE==='new'){const c=Date.now()-864e5;r=r.filter(x=>x.first_seen&&new Date(x.first_seen).getTime()>=c);}
   const by={heat:(a,b)=>heat(b)-heat(a),new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};
   r.sort(by[s]||by.heat);
-  document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone));
+  document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone||x.contact_type));
   $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
   $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr data-id="${x.id}">
-    <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer">`:''}</td>
+    <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer" onclick="openDetail('${x.id}')" style="cursor:pointer" title="Detay">`:`<button onclick="openDetail('${x.id}')" style="background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--mut);width:84px;height:60px;cursor:pointer" title="Detay">👁</button>`}</td>
     <td><span class="badge b-tur">${x.property_type||'-'}</span></td>
     <td><a class="title" href="${x.url}" target="_blank">${x.title||''}</a>${isNew(x)?'<span class="b-new">YENİ</span>':''}${heat(x)>=70?'<span class="b-hot" title="Arama önceliği yüksek">🔥</span>':''}${DUP.has(String(x.id))?'<span class="b-dup">⚠️ mükerrer</span>':''}</td>
     <td class="price">${x.price?fmt(x.price)+' ₺':''}</td>
@@ -214,7 +265,7 @@ function render(){
     <td>${x.area_m2?x.area_m2+' m²':''}${x.rooms?' · '+x.rooms:''}</td>
     <td class="muted">${x.listing_date||''}</td><td class="sysdate">${fmtDate(x.first_seen)}</td><td>${x.days_on_site??''}</td>
     <td class="${leftClass(x.days_left)}">${x.days_left??''}</td>
-    <td class="col-phone">${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:'<span class="muted">—</span>'}</td>
+    <td class="col-phone">${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:(x.contact_type==='message'?'<span style="color:var(--amber);font-weight:600" title="Sahibinden\'de telefon yok, mesajla iletişim">✉️ Mesajla</span>':'<span class="muted">—</span>')}</td>
     <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select>${x.status_by?`<div class="byline">👤 ${x.status_by} · ${fmtDate(x.status_at)}</div>`:''}</td>
     <td>${x.removed==1?`<select class="stsel" onchange="upd('${x.id}','verify_status',this.value)">${VERIFY.map(v=>`<option ${(x.verify_status||'Teyit Bekliyor')===v?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>'}</td>
     <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>

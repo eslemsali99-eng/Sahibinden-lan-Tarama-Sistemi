@@ -12,7 +12,6 @@ module.exports = {
 
   // Hedef ilceler (sahibinden URL slug'lari). Sadece Bursa.
   DISTRICTS: [
-    { name: 'Yıldırım', slug: 'bursa-yildirim' },
     { name: 'Osmangazi', slug: 'bursa-osmangazi' },
     { name: 'Nilüfer', slug: 'bursa-nilufer' },
     { name: 'Karacabey', slug: 'bursa-karacabey' },

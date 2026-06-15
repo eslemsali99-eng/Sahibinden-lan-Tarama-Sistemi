@@ -93,25 +93,26 @@ async function handle(req, res) {
     const { meta, rows } = JSON.parse(body);
     const recs = [];
     for (const x of rows) { if (!x || !x.id) continue; const rec = normalize(meta, x); if (rec.category === 'Kiralık') continue; recs.push(rec); }
-    let priceMap = new Map();
+    let exMap = new Map();
     if (recs.length) {
       const ids = recs.map((r) => r.id);
-      const ex = await all(`SELECT id, price FROM listings WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
-      priceMap = new Map(ex.map((r) => [String(r.id), r.price]));
+      const ex = await all(`SELECT id, price, phone, contact_type FROM listings WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+      exMap = new Map(ex.map((r) => [String(r.id), r]));
     }
     const fresh = [], drops = [], stmts = [];
     for (const rec of recs) {
-      const had = priceMap.has(rec.id); const old = priceMap.get(rec.id);
+      const old = exMap.get(rec.id);
       stmts.push(upsertStatement(rec));
-      if (!had) fresh.push(rec);
-      else if (old && rec.price && rec.price < old) drops.push({ ...rec, oldPrice: old });
+      if (!old) fresh.push(rec);
+      else if (old.price && rec.price && rec.price < old.price) drops.push({ ...rec, oldPrice: old.price, phone: old.phone, contact_type: old.contact_type });
     }
     await batchWrite(stmts);
     const total = num((await get('SELECT COUNT(*) c FROM listings')).c);
-    sendJSON(res, 200, { ok: true, processed: recs.length, fresh: fresh.length, drops: drops.length, total });
-    console.log(`+${recs.length} (${meta.district}/${meta.categoryTxn}) yeni:${fresh.length} düşüş:${drops.length} -> DB ${total}`);
-    // toplu (bulk) taramada bildirim atma — sadece 7/24 oto'daki gerçek yeni ilanlar bildirsin
-    if (fresh.length && !meta.bulk) notifier.notifyNew(fresh).catch(() => {});
+    // YENİ ilanların url'leri -> eklenti detaydan telefon/açıklama/görsel çeker, sonra enrich(notify:true) ile TELEFONLA bildirir
+    const freshUrls = (meta.bulk ? [] : fresh).map((r) => ({ id: r.id, url: r.url }));
+    sendJSON(res, 200, { ok: true, processed: recs.length, fresh: fresh.length, drops: drops.length, total, freshUrls });
+    console.log(`+${recs.length} (${meta.district}) yeni:${fresh.length} düşüş:${drops.length} -> DB ${total}`);
+    // yeni ilan bildirimi BURADA DEĞİL -> enrich(notify:true)'da telefonla birlikte. Fiyat düşüşü burada.
     if (drops.length && !meta.bulk) notifier.notifyPriceDrops(drops).catch(() => {});
     return;
   }
@@ -207,8 +208,11 @@ async function handle(req, res) {
   }
   if (req.method === 'POST' && pathOnly === '/api/enrich') {
     const body = await readBody(req); const e = JSON.parse(body);
-    await run('UPDATE listings SET phone=COALESCE(?,phone), seller_name=COALESCE(?,seller_name), ownership_type=COALESCE(?,ownership_type), verified_owner=COALESCE(?,verified_owner) WHERE id=?',
-      [e.phone || null, e.seller_name || null, e.ownership_type || null, (e.verified_owner == null ? null : (e.verified_owner ? 1 : 0)), String(e.id)]);
+    const imgs = e.images ? (typeof e.images === 'string' ? e.images : JSON.stringify(e.images)) : null;
+    await run('UPDATE listings SET phone=COALESCE(?,phone), seller_name=COALESCE(?,seller_name), ownership_type=COALESCE(?,ownership_type), verified_owner=COALESCE(?,verified_owner), description=COALESCE(?,description), images=COALESCE(?,images), contact_type=COALESCE(?,contact_type) WHERE id=?',
+      [e.phone || null, e.seller_name || null, e.ownership_type || null, (e.verified_owner == null ? null : (e.verified_owner ? 1 : 0)), e.description || null, imgs, e.contact_type || null, String(e.id)]);
+    // yeni ilan: telefon/detay çekildikten sonra TELEFONLA birlikte bildir
+    if (e.notify) { const row = await get('SELECT * FROM listings WHERE id=?', [String(e.id)]); if (row && !row.removed) notifier.notifyNew([row]).catch(() => {}); }
     return sendJSON(res, 200, { ok: true });
   }
 

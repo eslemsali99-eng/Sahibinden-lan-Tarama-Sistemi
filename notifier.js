@@ -56,7 +56,16 @@ async function send(text) {
   await Promise.allSettled(jobs);
 }
 
-// yeni ilanlar icin ozet mesaj (spam yapmamak icin tek mesajda topla)
+// iletişim satırı: telefon varsa numara, yoksa "mesajla", henüz çekilmediyse "panelde"
+function contactLine(x) {
+  if (x.phone) return `📞 ${x.phone}`;
+  if (x.contact_type === 'message') return `✉️ Telefon yok — sahibinden'de mesajla iletişim kabul ediyor`;
+  return `📞 Telefon panelde görünecek`;
+}
+// link: HER ZAMAN kendi panelimizdeki ilana (sahibinden kalkınca genel sayfaya atıyor)
+const panelLink = (x) => `${PANEL}/?id=${encodeURIComponent(x.id)}`;
+
+// yeni ilanlar icin mesaj (telefon + panel linki ile)
 async function notifyNew(listings) {
   if (!listings.length) return;
   const c = load(); if (!c.enabled) return;
@@ -65,10 +74,10 @@ async function notifyNew(listings) {
     const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
     const tip = x.property_type || '';
     const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
-    return `🏠 <b>${price}</b> ${tip} — ${yer}\n${x.url}`;
+    return `🏠 <b>${price}</b> ${tip} — ${yer}\n${contactLine(x)}\n👉 ${panelLink(x)}`;
   });
   const more = listings.length > top.length ? `\n…ve ${listings.length - top.length} ilan daha` : '';
-  const header = `🚨 <b>${listings.length} YENİ EV SAHİBİ İLANI</b> (Sahibinden)\nİlk arayan ol! 📞\n\n`;
+  const header = `🚨 <b>${listings.length} YENİ EV SAHİBİ İLANI</b>\nİlk arayan ol! 📞\n\n`;
   await send(header + lines.join('\n\n') + more);
 }
 
@@ -81,7 +90,7 @@ async function notifyPriceDrops(drops) {
     const eski = Number(x.oldPrice).toLocaleString('tr-TR');
     const fark = Math.round((1 - x.price / x.oldPrice) * 100);
     const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
-    return `📉 <b>%${fark} indirim</b>\n<s>${eski} ₺</s> → <b>${yeni} ₺</b>\n${x.property_type || ''} — ${yer}\n${x.url}`;
+    return `📉 <b>%${fark} indirim</b>\n<s>${eski} ₺</s> → <b>${yeni} ₺</b>\n${x.property_type || ''} — ${yer}\n${contactLine(x)}\n👉 ${panelLink(x)}`;
   });
   await send(`💰 <b>${drops.length} İLANDA FİYAT DÜŞTÜ</b> — pazarlığa açık olabilir! 📞\n\n` + lines.join('\n\n'));
 }
@@ -95,7 +104,7 @@ async function notifyRemoved(listings) {
     const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
     // sahibinden linki ölü -> kendi panelimizdeki o spesifik ilana yönlendir (Yayından Kalkanlar)
     const link = `${PANEL}/?tab=removed&id=${encodeURIComponent(x.id)}`;
-    return `📭 <b>${price}</b> ${x.property_type || ''} — ${yer}\n👉 Panelde aç: ${link}`;
+    return `📭 <b>${price}</b> ${x.property_type || ''} — ${yer}\n${contactLine(x)}\n👉 Panelde aç: ${link}`;
   });
   await send(`🔎 <b>${listings.length} İLAN YAYINDAN KALKTI</b> — Teyit gerekiyor!\nEv sahibini ara: sattı mı, vazgeçti mi? 📞\n\n` + lines.join('\n\n'));
 }
