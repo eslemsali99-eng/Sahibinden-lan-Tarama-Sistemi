@@ -47,9 +47,10 @@ async function maybeDailyDigest() {
   try {
     const today = new Date().toISOString().slice(0, 10);
     if ((await getMeta('digest_date')) === today) return;
-    if (new Date().getUTCHours() < 6) return; // ~09:00 TR'den önce gönderme
+    if (new Date().getUTCHours() < 15) return; // GÜN SONU: ~18:00 TR (15 UTC) sonrası gönder
     await setMeta('digest_date', today); // slotu hemen al (çift gönderme yok)
-    const rows = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 27 AND 32 ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
+    // Dolmaya 1-2 gün kalanlar (days_on_site 28-29). "0 gün kaldı" (>=30) HARİÇ.
+    const rows = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 28 AND 29 ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
     if (rows.length) notifier.notifyDigest(rows).catch(() => {});
     console.log(`🔔 Son Şans günlük özet: ${rows.length} ilan`);
   } catch (e) { console.log('digest hata:', e.message); }

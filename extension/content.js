@@ -26,6 +26,32 @@
   }
   const DONE = () => JSON.parse(localStorage.getItem('bircan_done') || '[]');
   const setDone = (a) => localStorage.setItem('bircan_done', JSON.stringify(a));
+  async function jpostEarly(url, obj) { try { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-token': TOK }, body: JSON.stringify(obj) }); return await r.json(); } catch (e) {} }
+
+  // DETAY SAYFASI MODU: UI yok. Sayfa zaten GERÇEK gezinmeyle açıldı (DataDome bloklamaz) -> telefon/açıklama/görseli oku, kaydet.
+  // SW yeni/telefonsuz ilanı arka-plan sekmesinde açınca burası çalışır; ekip elle açınca da çalışır (pasif yakalama).
+  const isDetail = /\/ilan\//.test(location.pathname);
+  async function captureDetailPhone() {
+    try {
+      const idm = location.pathname.match(/(\d{6,})/); const id = idm ? idm[1] : null;
+      if (!id) return;
+      await sleep(2500);
+      // "Numarayı/Telefonu Göster" butonu varsa tıkla (telefon AJAX ile gelir)
+      const btns = [...document.querySelectorAll('button,a,span')].filter((e) => /numara(yı)? göster|telefonu göster|cep.*göster/i.test((e.textContent || '').trim()));
+      for (const b of btns.slice(0, 3)) { try { b.click(); } catch (e) {} }
+      await sleep(2500);
+      let phone = null;
+      const telA = document.querySelector('a[href^="tel:"]'); if (telA) phone = normPhone(telA.getAttribute('href'));
+      if (!phone) { const pe = document.querySelector('.pretty-phone-part, #phoneList, .phone-line, .megaPhoneBox, .classifiedUserPhone'); if (pe) phone = normPhone((pe.textContent.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]); }
+      if (!phone) phone = normPhone((document.body.innerText.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]);
+      const dEl = document.querySelector('#classifiedDescription, .classifiedDescription, .classified-detail-desc');
+      const description = dEl ? dEl.innerText.trim().replace(/\n{3,}/g, '\n\n').slice(0, 4000) : null;
+      const images = [...new Set([...document.querySelectorAll('img')].map((im) => im.getAttribute('src') || im.getAttribute('data-src') || '').filter((s) => /shbdn\.com\/photos/i.test(s)))].slice(0, 12);
+      const tapu = (((document.body.innerText.match(/Tapu Durumu\s*:?\s*([A-Za-zÇĞİÖŞÜçğıöşü\/ ]{3,30})/) || [])[1]) || '').trim() || null;
+      await jpostEarly(ENR, { id, phone, ownership_type: tapu, description, images, contact_type: phone ? 'phone' : 'message', verified_owner: 1 });
+    } catch (e) {}
+  }
+  if (isDetail) { captureDetailPhone(); return; }
 
   function mkBtn(txt, bottom, color) {
     const b = document.createElement('button');
@@ -114,25 +140,14 @@
   const U = (p) => ING.replace('/ingest', p);
   function setBlock() { localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6)); log('🚫 doğrulama/blok — IP dinlensin diye 3 saat beklenecek', '#f55'); }
 
-  // eski/telefonsuz ilanları kontrol et: kalkanları işaretle + telefon/açıklama/görsel çek
+  // telefonsuz + dolmaya yakın ilanları GERÇEK arka-plan sekmesinde aç -> telefon çekilsin (bloksuz)
   async function checkBatch(limit) {
     let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then((r) => r.json()); } catch (e) { return; }
     list = (list || []).slice(0, limit);
     if (!list.length) return;
-    log(`📋 aktiflik+telefon: ${list.length} ilan`, '#fa0');
-    let removed = [], active = [], gone = 0, phones = 0;
-    for (const it of list) {
-      const r = await checkOne(it.url.startsWith('http') ? it.url : BASE + it.url);
-      if (r.challenge) { setBlock(); break; }
-      if (r.removed) { removed.push(it.id); gone++; }
-      else if (r.active) { active.push(it.id); try { await jpost(U('/api/enrich'), { id: it.id, phone: r.phone, ownership_type: r.tapu, description: r.description, images: r.images, contact_type: r.contact_type, verified_owner: 1 }); if (r.phone) phones++; } catch (e) {} }
-      if (removed.length >= 10) { try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {} removed = []; }
-      if (active.length >= 40) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
-      await sleep(rnd(8000, 16000));
-    }
-    if (removed.length) try { await jpost(U('/api/mark-removed'), { ids: removed }); } catch (e) {}
-    if (active.length) try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {}
-    log(`   kontrol: ${gone} kalkmış · ${phones} telefon`, '#0f0');
+    log(`📞 telefon çekme (dolmaya yakın): ${list.length} ilan — arka sekmeler`, '#fa0');
+    try { await chrome.runtime.sendMessage({ type: 'enrichViaTabs', items: list.map((it) => ({ id: it.id, url: it.url.startsWith('http') ? it.url : BASE + it.url })) }); } catch (e) {}
+    log(`   telefon turu bitti`, '#0f0');
   }
 
   // KALKAN TESPİTİ (Fikir 2): tam liste sayfalarındaki ID'leri topla -> sunucuda DB ile eşle.
@@ -180,18 +195,13 @@
       }
       await sleep(rnd(DIST_MIN, DIST_MAX));
     }
-    // 2) YENİ ilanları detaydan zenginleştir (telefon/açıklama/görsel) — burada NOTIFY YOK
+    // 2) YENİ ilanları GERÇEK arka-plan sekmelerinde aç (SW) -> o sayfaların content script'i telefonu çeker (blok yok)
     const freshIds = fresh.map((f) => String(f.id));
-    const CAP = 12; // bir turda en fazla 12 yeni detay (burst -> blok riskini sınırla)
-    for (let k = 0; k < fresh.length && k < CAP; k++) {
-      const f = fresh[k];
-      const r = await checkOne(f.url.startsWith('http') ? f.url : BASE + f.url);
-      if (r.challenge) { setBlock(); break; }
-      if (r.removed) { try { await jpost(U('/api/mark-removed'), { ids: [f.id] }); } catch (e) {} continue; }
-      try { await jpost(ENR, { id: f.id, verified_owner: 1, phone: r.phone, ownership_type: r.tapu, description: r.description, images: r.images, contact_type: r.contact_type }); } catch (e) {}
-      await sleep(rnd(PAGE_MIN, PAGE_MAX));
+    if (fresh.length) {
+      log(`   📞 ${Math.min(fresh.length, 12)} yeni ilan telefonu çekiliyor (arka sekme, gerçek gezinme)...`, '#9cf');
+      try { await chrome.runtime.sendMessage({ type: 'enrichViaTabs', items: fresh.slice(0, 12).map((f) => ({ id: f.id, url: f.url.startsWith('http') ? f.url : BASE + f.url })) }); } catch (e) {}
     }
-    // TEK TOPLU bildirim (telefonlar çekilmiş halde) — sel yok, tek mesajda hepsi telefonuyla
+    // TEK TOPLU bildirim (telefonlar artık çekildi) — sel yok, tek mesajda hepsi telefonuyla
     if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
     // 3) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust) — en önemli kısım
     if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await removalSweep();
@@ -207,4 +217,7 @@
   }
   btn3.onclick = () => setAuto(localStorage.getItem('bircan_auto') !== '1');
   if (localStorage.getItem('bircan_auto') === '1') setTimeout(() => setAuto(true), 4000);
+  // ARKA PLAN SW zamanlayıcısı (günde ~8 tur) buradan tetikler: 7/24 açıksa bir tur çalıştır.
+  // Böylece sekme arkada olsa da çalışır; setInterval'e bağlı kalmaz.
+  try { chrome.runtime.onMessage.addListener((msg) => { if (msg && msg.type === 'runCycle' && localStorage.getItem('bircan_auto') === '1') autoCycle(); }); } catch (e) {}
 })();
