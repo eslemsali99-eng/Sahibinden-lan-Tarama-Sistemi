@@ -180,8 +180,9 @@ async function handle(req, res) {
 
   // --- aktiflik kontrol: kontrol edilecek ilanlar ---
   if (req.method === 'GET' && pathOnly === '/api/need-check') {
-    // telefonu olmayanları öne al (hem aktiflik kontrolü hem telefon çekme aynı sayfadan)
-    const rows = await all("SELECT id,url FROM listings WHERE removed=0 ORDER BY (phone IS NULL OR phone='') DESC, (last_check IS NULL) DESC, last_check ASC LIMIT 400");
+    // STRATEJİ: dolmaya yakın (days_on_site yüksek = ~30 güne yakın) telefonsuz ilanları ÖNCE çek.
+    // Çünkü yakında yayından kalkacaklar; kalkmadan telefonu yakalamalıyız + en motive satıcı onlar.
+    const rows = await all("SELECT id,url,days_on_site FROM listings WHERE removed=0 AND is_active=1 AND (phone IS NULL OR phone='') AND contact_type IS NULL ORDER BY days_on_site DESC LIMIT 400");
     return sendJSON(res, 200, rows);
   }
   if (req.method === 'POST' && pathOnly === '/api/mark-checked') {
