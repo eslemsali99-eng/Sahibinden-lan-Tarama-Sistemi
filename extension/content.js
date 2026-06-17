@@ -63,22 +63,17 @@
     return { ok: false };
   }
 
-  // Foto-OCR (BLOKSUZ): ev sahipleri telefonu sık sık fotoğrafa yazıyor. Fotoğraf CDN'de (i0.shbdn.com),
-  // DataDome korumasız -> ocr.space ile okuyup telefonu çıkar. Hiç detay sayfası açmadan = sıfır blok.
+  // NOT: Foto-OCR (ocr.space) test edildi -> sahibinden fotoğraflara sadece kendi ilan ID'sini
+  // filigranlıyor, ev sahibi telefonu fotoğrafa yazmıyor -> 0 telefon. Bu sitede işe yaramadığı
+  // için döngüde KULLANILMIYOR. (Fonksiyon ileride farklı kaynak için referans olarak duruyor; doğru büyük varyant 'big_'.)
   async function ocrPhone(imgUrl) {
     if (!imgUrl) return null;
-    const cands = [...new Set([imgUrl.replace(/\/(x5|x2|thmb|small|org)_/i, '/x10_'), imgUrl])];
-    for (const u of cands) {
-      try {
-        const r = await fetch(`https://api.ocr.space/parse/imageurl?apikey=${OCR_KEY}&OCREngine=2&url=${encodeURIComponent(u)}`);
-        const j = await r.json();
-        const txt = (j && j.ParsedResults && j.ParsedResults[0] && j.ParsedResults[0].ParsedText) || '';
-        const p = normPhone((txt.match(/0?\s?5\d{2}[\s)\-.]*\d{3}[\s\-.]*\d{2}[\s\-.]*\d{2}/) || [])[0]);
-        if (p) return p;
-      } catch (e) {}
-      await sleep(1200);
-    }
-    return null;
+    const u = imgUrl.replace(/\/(lthmb|thmb|x2|x5|small)_/i, '/big_');
+    try {
+      const j = await (await fetch(`https://api.ocr.space/parse/imageurl?apikey=${OCR_KEY}&OCREngine=2&url=${encodeURIComponent(u)}`)).json();
+      const txt = (j && j.ParsedResults && j.ParsedResults[0] && j.ParsedResults[0].ParsedText) || '';
+      return normPhone((txt.match(/0?\s?5\d{2}[\s)\-.]*\d{3}[\s\-.]*\d{2}[\s\-.]*\d{2}/) || [])[0]);
+    } catch (e) { return null; }
   }
 
   // --- detaydan çıkarım: aktif mi? + telefon/tapu/açıklama/görseller ---
@@ -127,15 +122,6 @@
     log(`📋 aktiflik+telefon: ${list.length} ilan`, '#fa0');
     let removed = [], active = [], gone = 0, phones = 0;
     for (const it of list) {
-      // 1) BLOKSUZ önce: fotoğraftan OCR ile telefon dene (detay açmadan)
-      const op = await ocrPhone(it.image_url);
-      if (op) {
-        try { await jpost(U('/api/enrich'), { id: it.id, phone: op, contact_type: 'phone', verified_owner: 1 }); } catch (e) {}
-        phones++; active.push(it.id);
-        if (active.length >= 40) { try { await jpost(U('/api/mark-checked'), { ids: active }); } catch (e) {} active = []; }
-        await sleep(rnd(2000, 4000)); continue;
-      }
-      // 2) detay fetch (telefon + açıklama + görsel + aktiflik)
       const r = await checkOne(it.url.startsWith('http') ? it.url : BASE + it.url);
       if (r.challenge) { setBlock(); break; }
       if (r.removed) { removed.push(it.id); gone++; }
@@ -200,14 +186,9 @@
     for (let k = 0; k < fresh.length && k < CAP; k++) {
       const f = fresh[k];
       const r = await checkOne(f.url.startsWith('http') ? f.url : BASE + f.url);
-      if (r.challenge) { // detay bloklandı -> kalan yenilerde BLOKSUZ Foto-OCR dene, sonra dur
-        for (let j = k; j < fresh.length && j < CAP; j++) { const op = await ocrPhone(fresh[j].img); if (op) { try { await jpost(ENR, { id: fresh[j].id, phone: op, contact_type: 'phone', verified_owner: 1 }); } catch (e) {} } }
-        setBlock(); break;
-      }
+      if (r.challenge) { setBlock(); break; }
       if (r.removed) { try { await jpost(U('/api/mark-removed'), { ids: [f.id] }); } catch (e) {} continue; }
-      let phone = r.phone, ctype = r.contact_type;
-      if (!phone) { const op = await ocrPhone(f.img); if (op) { phone = op; ctype = 'phone'; } } // detayda telefon yoksa fotodan dene
-      try { await jpost(ENR, { id: f.id, verified_owner: 1, phone, ownership_type: r.tapu, description: r.description, images: r.images, contact_type: ctype }); } catch (e) {}
+      try { await jpost(ENR, { id: f.id, verified_owner: 1, phone: r.phone, ownership_type: r.tapu, description: r.description, images: r.images, contact_type: r.contact_type }); } catch (e) {}
       await sleep(rnd(PAGE_MIN, PAGE_MAX));
     }
     // TEK TOPLU bildirim (telefonlar çekilmiş halde) — sel yok, tek mesajda hepsi telefonuyla
