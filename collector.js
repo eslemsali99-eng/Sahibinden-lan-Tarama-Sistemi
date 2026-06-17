@@ -25,7 +25,7 @@ const SID = crypto.createHash('sha256').update(TEAM_PASS + '::bircan').digest('h
 const authed = (req) => (req.headers.cookie || '').includes('bircan_sid=' + SID);
 const hasToken = (req) => (req.headers['x-token'] || '') === TOKEN;
 const PUBLIC = ['/login', '/portfolio', '/musteri', '/api/portfolio', '/api/inquiry', '/harvester.js', '/kur', '/health'];
-const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone', '/api/need-check', '/api/mark-removed', '/api/mark-checked'];
+const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone', '/api/need-check', '/api/mark-removed', '/api/mark-checked', '/api/notify-fresh'];
 const LOGIN_HTML = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Giriş · Bircan Akın</title>
 <style>body{font-family:-apple-system,Arial;background:#0b1020;color:#e7ecf6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
 form{background:#151b30;padding:34px;border-radius:16px;border:1px solid #26304d;width:320px;text-align:center}
@@ -200,6 +200,18 @@ async function handle(req, res) {
     if (fresh.length) notifier.notifyRemoved(fresh).catch(() => {});
     console.log(`📭 ${fresh.length} ilan yayından kalktı (teyit bekliyor)`);
     return;
+  }
+
+  // --- yeni ilanlar TEK toplu bildirim (telefonlar çekildikten sonra) ---
+  if (req.method === 'POST' && pathOnly === '/api/notify-fresh') {
+    const body = await readBody(req); const { ids } = JSON.parse(body);
+    if (ids && ids.length) {
+      const sids = ids.map(String);
+      const rows = await all(`SELECT * FROM listings WHERE id IN (${sids.map(() => '?').join(',')}) AND removed=0`, sids);
+      if (rows.length) notifier.notifyNew(rows).catch(() => {});
+      console.log(`🔔 toplu bildirim: ${rows.length} yeni ilan`);
+    }
+    return sendJSON(res, 200, { ok: true });
   }
 
   // --- telefon eksikleri / zenginleştirme ---
