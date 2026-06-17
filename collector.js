@@ -3,7 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { init, all, get, run, batchWrite, upsertStatement } = require('./db');
+const { init, all, get, run, batchWrite, upsertStatement, getMeta, setMeta } = require('./db');
 const { parseTrDate, parsePrice, detectType, splitLocation, bestImage } = require('./lib');
 const cfg = require('./config');
 const notifier = require('./notifier');
@@ -41,6 +41,19 @@ function cors(res) {
 }
 const readBody = (req) => new Promise((resolve) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => resolve(b)); });
 const sendJSON = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+
+// SON ŞANS günlük özet — günde 1 kez (06:00 UTC = 09:00 TR sonrası ilk istekte). Render uykudan uyanınca tetiklenir.
+async function maybeDailyDigest() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    if ((await getMeta('digest_date')) === today) return;
+    if (new Date().getUTCHours() < 6) return; // ~09:00 TR'den önce gönderme
+    await setMeta('digest_date', today); // slotu hemen al (çift gönderme yok)
+    const rows = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 27 AND 32 ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
+    if (rows.length) notifier.notifyDigest(rows).catch(() => {});
+    console.log(`🔔 Son Şans günlük özet: ${rows.length} ilan`);
+  } catch (e) { console.log('digest hata:', e.message); }
+}
 
 function normalize(meta, x) {
   const { iso, days } = parseTrDate(x.dateTxt);
@@ -110,11 +123,12 @@ async function handle(req, res) {
     await batchWrite(stmts);
     const total = num((await get('SELECT COUNT(*) c FROM listings')).c);
     // YENİ ilanların url'leri -> eklenti detaydan telefon/açıklama/görsel çeker, sonra enrich(notify:true) ile TELEFONLA bildirir
-    const freshUrls = (meta.bulk ? [] : fresh).map((r) => ({ id: r.id, url: r.url }));
+    const freshUrls = (meta.bulk ? [] : fresh).map((r) => ({ id: r.id, url: r.url, img: r.image_url }));
     sendJSON(res, 200, { ok: true, processed: recs.length, fresh: fresh.length, drops: drops.length, total, freshUrls });
     console.log(`+${recs.length} (${meta.district}) yeni:${fresh.length} düşüş:${drops.length} -> DB ${total}`);
     // yeni ilan bildirimi BURADA DEĞİL -> notify-fresh'te toplu+telefonlu. Fiyat düşüşü HER ZAMAN (nadir, önemli).
     if (drops.length) notifier.notifyPriceDrops(drops).catch(() => {});
+    maybeDailyDigest().catch(() => {}); // saatlik ingest'te günde 1 kez Son Şans özeti tetiklenir
     return;
   }
 
@@ -182,7 +196,8 @@ async function handle(req, res) {
   if (req.method === 'GET' && pathOnly === '/api/need-check') {
     // STRATEJİ: dolmaya yakın (days_on_site yüksek = ~30 güne yakın) telefonsuz ilanları ÖNCE çek.
     // Çünkü yakında yayından kalkacaklar; kalkmadan telefonu yakalamalıyız + en motive satıcı onlar.
-    const rows = await all("SELECT id,url,days_on_site FROM listings WHERE removed=0 AND is_active=1 AND (phone IS NULL OR phone='') AND contact_type IS NULL ORDER BY days_on_site DESC LIMIT 400");
+    // ÖNCELİK: dolmaya yakın pencere (25-31 gün = ~30 güne ≤5) en önce; sonra diğerleri. 361 gün gibi eski/yenilenmişleri öne atma.
+    const rows = await all("SELECT id,url,image_url,days_on_site FROM listings WHERE removed=0 AND is_active=1 AND (phone IS NULL OR phone='') AND contact_type IS NULL ORDER BY (days_on_site BETWEEN 25 AND 31) DESC, days_on_site DESC LIMIT 400");
     return sendJSON(res, 200, rows);
   }
   if (req.method === 'POST' && pathOnly === '/api/mark-checked') {

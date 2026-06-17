@@ -109,4 +109,18 @@ async function notifyRemoved(listings) {
   await send(`🔎 <b>${listings.length} İLAN YAYINDAN KALKTI</b> — Teyit gerekiyor!\nEv sahibini ara: sattı mı, vazgeçti mi? 📞\n\n` + lines.join('\n\n'));
 }
 
-module.exports = { send, notifyNew, notifyPriceDrops, notifyRemoved, load };
+// SON ŞANS günlük özet: dolmaya çok az kalan ilanlar (yarın kalkabilir) — bugün ara!
+async function notifyDigest(listings) {
+  if (!listings.length) return;
+  const c = load(); if (!c.enabled) return;
+  const lines = listings.slice(0, 12).map((x) => {
+    const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
+    const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
+    const left = x.days_on_site != null ? Math.max(0, 30 - x.days_on_site) : '?';
+    return `⏳ <b>${left} gün kaldı</b> · ${price} ${x.property_type || ''} — ${yer}\n${contactLine(x)}\n👉 ${panelLink(x)}`;
+  });
+  const more = listings.length > 12 ? `\n…ve ${listings.length - 12} ilan daha` : '';
+  await send(`🔔 <b>SON ŞANS — bugün ara!</b>\nDolmaya çok az kaldı, yarın yayından kalkabilir 📞\n\n` + lines.join('\n\n') + more);
+}
+
+module.exports = { send, notifyNew, notifyPriceDrops, notifyRemoved, notifyDigest, load };

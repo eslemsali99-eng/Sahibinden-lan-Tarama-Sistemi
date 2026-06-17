@@ -256,6 +256,7 @@ function render(){
   r.sort(by[s]||by.heat);
   document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone||x.contact_type));
   $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
+  if(!r.length) $('#empty').textContent = MODE==='removed' ? '📭 Henüz yayından kalkan ilan yok. 7/24 taraması günde 1 kez tüm listeyi kontrol eder; bizde olup sahibinden\'de kalkan ilanlar otomatik buraya düşer (eklenti v2.7+ ve aktif 7/24 gerekir).' : 'Veri bekleniyor…';
   $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr data-id="${x.id}">
     <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer" onclick="openDetail('${x.id}')" style="cursor:pointer" title="Detay">`:`<button onclick="openDetail('${x.id}')" style="background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--mut);width:84px;height:60px;cursor:pointer" title="Detay">👁</button>`}</td>
     <td><span class="badge b-tur">${x.property_type||'-'}</span></td>

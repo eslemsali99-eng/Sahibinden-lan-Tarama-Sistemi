@@ -36,6 +36,7 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, name TEXT, phone TEXT, email TEXT,
     message TEXT, lang TEXT, item_ids TEXT, handled INTEGER DEFAULT 0
   )`,
+  `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)`,
 ];
 
 // CRM + portföy alanları (mevcut tabloya ekle — migrasyon)
@@ -93,4 +94,7 @@ function upsertStatement(rec) {
 
 async function upsertListing(rec) { await batchWrite([upsertStatement(rec)]); }
 
-module.exports = { client, init, all, get, run, batchWrite, upsertStatement, REMOTE };
+async function getMeta(k) { const r = await get('SELECT v FROM meta WHERE k=?', [k]); return r ? r.v : null; }
+async function setMeta(k, v) { await run('INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v', [k, String(v)]); }
+
+module.exports = { client, init, all, get, run, batchWrite, upsertStatement, getMeta, setMeta, REMOTE };
