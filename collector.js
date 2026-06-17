@@ -25,7 +25,7 @@ const SID = crypto.createHash('sha256').update(TEAM_PASS + '::bircan').digest('h
 const authed = (req) => (req.headers.cookie || '').includes('bircan_sid=' + SID);
 const hasToken = (req) => (req.headers['x-token'] || '') === TOKEN;
 const PUBLIC = ['/login', '/portfolio', '/musteri', '/api/portfolio', '/api/inquiry', '/harvester.js', '/kur', '/health'];
-const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone', '/api/need-check', '/api/mark-removed', '/api/mark-checked', '/api/notify-fresh'];
+const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone', '/api/need-check', '/api/mark-removed', '/api/mark-checked', '/api/notify-fresh', '/api/reconcile'];
 const LOGIN_HTML = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Giriş · Bircan Akın</title>
 <style>body{font-family:-apple-system,Arial;background:#0b1020;color:#e7ecf6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
 form{background:#151b30;padding:34px;border-radius:16px;border:1px solid #26304d;width:320px;text-align:center}
@@ -113,8 +113,8 @@ async function handle(req, res) {
     const freshUrls = (meta.bulk ? [] : fresh).map((r) => ({ id: r.id, url: r.url }));
     sendJSON(res, 200, { ok: true, processed: recs.length, fresh: fresh.length, drops: drops.length, total, freshUrls });
     console.log(`+${recs.length} (${meta.district}) yeni:${fresh.length} düşüş:${drops.length} -> DB ${total}`);
-    // yeni ilan bildirimi BURADA DEĞİL -> enrich(notify:true)'da telefonla birlikte. Fiyat düşüşü burada.
-    if (drops.length && !meta.bulk) notifier.notifyPriceDrops(drops).catch(() => {});
+    // yeni ilan bildirimi BURADA DEĞİL -> notify-fresh'te toplu+telefonlu. Fiyat düşüşü HER ZAMAN (nadir, önemli).
+    if (drops.length) notifier.notifyPriceDrops(drops).catch(() => {});
     return;
   }
 
@@ -199,6 +199,21 @@ async function handle(req, res) {
     sendJSON(res, 200, { ok: true, removed: fresh.length });
     if (fresh.length) notifier.notifyRemoved(fresh).catch(() => {});
     console.log(`📭 ${fresh.length} ilan yayından kalktı (teyit bekliyor)`);
+    return;
+  }
+
+  // --- ID EŞLEME: liste sayfasındaki güncel ID'ler vs DB -> eksilenler = yayından kalktı (detay fetch YOK) ---
+  if (req.method === 'POST' && pathOnly === '/api/reconcile') {
+    const body = await readBody(req); const { district, ids } = JSON.parse(body);
+    if (!district || !Array.isArray(ids) || !ids.length) return sendJSON(res, 400, { error: 'district+ids gerekli' });
+    const sset = new Set(ids.map(String));
+    const dbRows = await all("SELECT * FROM listings WHERE district=? AND removed=0 AND is_active=1 AND seller_type='sahibinden'", [district]);
+    const gone = dbRows.filter((r) => !sset.has(String(r.id)));
+    const now = new Date().toISOString();
+    for (const r of gone) await run("UPDATE listings SET removed=1, removed_date=?, verify_status='Teyit Bekliyor', last_check=? WHERE id=?", [now, now, String(r.id)]);
+    sendJSON(res, 200, { ok: true, checked: dbRows.length, removed: gone.length });
+    if (gone.length) notifier.notifyRemoved(gone).catch(() => {});
+    console.log(`🔎 reconcile ${district}: ${gone.length} kalktı / ${dbRows.length} aktif`);
     return;
   }
 

@@ -14,6 +14,15 @@
   ];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const rnd = (a, b) => Math.floor(a + Math.random() * (b - a));
+  // telefonu TR formatına normalize et; geçersizse null (çöp telefon kaydetme)
+  function normPhone(raw) {
+    if (!raw) return null;
+    let d = String(raw).replace(/\D/g, '');
+    if (d.length === 12 && d.startsWith('90')) d = d.slice(2);
+    if (d.length === 10) d = '0' + d;
+    if (d.length === 11 && d[0] === '0' && '2345'.includes(d[1])) return d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7, 9) + ' ' + d.slice(9);
+    return null;
+  }
   const DONE = () => JSON.parse(localStorage.getItem('bircan_done') || '[]');
   const setDone = (a) => localStorage.setItem('bircan_done', JSON.stringify(a));
 
@@ -63,10 +72,14 @@
     let phone = null, tapu = null, description = null, images = [];
     try {
       const doc = new DOMParser().parseFromString(html, 'text/html');
+      // 1) en güvenilir: tel: linki   2) sahibinden telefon kutusu   3) JSON/meta   4) regex fallback
+      const telA = doc.querySelector('a[href^="tel:"]');
+      if (telA) phone = normPhone(telA.getAttribute('href'));
+      if (!phone) { const pe = doc.querySelector('.pretty-phone-part, #phoneList, .phone-line, .megaPhoneBox, .classifiedUserPhone, [class*="hone"]'); if (pe) phone = normPhone((pe.textContent.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]); }
+      if (!phone) { const m = html.match(/"phone\w*"\s*:\s*"?(\+?90?5\d{9})/i); if (m) phone = normPhone(m[1]); }
       const txt = doc.body ? doc.body.innerText : '';
-      phone = (txt.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]
-        || (txt.match(/0?\s?2\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0] || null;
-      if (phone) phone = phone.replace(/\s+/g, ' ').trim();
+      if (!phone) phone = normPhone((txt.match(/0?\s?5\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]
+        || (txt.match(/0?\s?2\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]);
       tapu = (txt.match(/Tapu Durumu\s*:?\s*([A-Za-zÇĞİÖŞÜçğıöşü\/ ]{3,30})/) || [])[1] || null;
       if (tapu) tapu = tapu.trim();
       const dEl = doc.querySelector('#classifiedDescription, .classifiedDescription, .classified-detail-desc');
@@ -108,6 +121,34 @@
     log(`   kontrol: ${gone} kalkmış · ${phones} telefon`, '#0f0');
   }
 
+  // KALKAN TESPİTİ (Fikir 2): tam liste sayfalarındaki ID'leri topla -> sunucuda DB ile eşle.
+  // Bizde olup sahibinden listesinde OLMAYAN = yayından kalktı. DETAY FETCH YOK -> blok yok. Günde ~1.
+  const SWEEP_MS = 20 * 60 * 60 * 1000;
+  async function removalSweep() {
+    const last = +(localStorage.getItem('bircan_lastsweep') || 0);
+    if (Date.now() - last < SWEEP_MS) return;
+    localStorage.setItem('bircan_lastsweep', String(Date.now())); // slotu hemen al
+    log('🔎 yayından kalkan taraması (tam liste, detaysız)...', '#9cf');
+    for (const d of DISTRICTS) {
+      const ids = []; let complete = true;
+      for (let p = 0; p < MAX_PAGES; p++) {
+        const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
+        if (!res.ok) { complete = false; setBlock(); break; }
+        const rows = parsePage(res.doc); if (!rows.length) break;
+        rows.forEach((r) => ids.push(r.id));
+        try { await jpost(ING, { meta: { district: d.name, baseType: 'Konut', sellerType: 'sahibinden', bulk: true }, rows }); } catch (e) {}
+        await sleep(rnd(PAGE_MIN, PAGE_MAX));
+        if (rows.length < 20) break;
+      }
+      // SADECE tam tamamlanan ilçede diff yap (yarım kalırsa yanlış 'kalktı' demesin)
+      if (complete && ids.length) {
+        try { const r = await jpost(U('/api/reconcile'), { district: d.name, ids }); if (r && r.removed) log(`   📭 ${d.name}: ${r.removed} yayından kalktı (teyit bekliyor)`, '#fa0'); } catch (e) {}
+      } else { log(`   ⏸️ ${d.name} yarım kaldı — diff atlandı`, '#888'); if (!complete) break; }
+      await sleep(rnd(DIST_MIN, DIST_MAX));
+    }
+    log('   ✅ kalkan taraması bitti', '#0f0');
+  }
+
   async function autoCycle() {
     const bu = +(localStorage.getItem('bircan_blocked_until') || 0);
     if (Date.now() < bu) { log(`⏸️ blok bekleme — ~${Math.ceil((bu - Date.now()) / 3.6e6)} saat sonra`, '#fa0'); return; }
@@ -138,7 +179,9 @@
     }
     // TEK TOPLU bildirim (telefonlar çekilmiş halde) — sel yok, tek mesajda hepsi telefonuyla
     if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
-    // 3) AKTİFLİK + TELEFON: bloklu değilse ~10 eski/telefonsuz ilan (kalkanları yakala + telefon doldur)
+    // 3) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust) — en önemli kısım
+    if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await removalSweep();
+    // 4) TELEFON: telefonsuz birkaç ilanı detaydan doldur (hafif, blok riski sınırlı)
     if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(10);
     log(`✅ tur bitti`, '#0f0');
   }
