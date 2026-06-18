@@ -1,7 +1,7 @@
 // Bircan Akın — arka plan service worker
 // 1) chrome.alarms ile 7/24 zamanlayıcı: günde ~8 tur (sekme arkada/kapalı olsa da)
 // 2) Telefon için GERÇEK arka-plan sekmesi açma: gerçek gezinme DataDome'u tetiklemez -> telefon gelir
-const CYCLE_MIN = 180; // 3 saatte bir = günde ~8 tur
+const CYCLE_MIN = 120; // 2 saatte bir = günde ~12 tur (sürekli aktiflik)
 
 function ensureAlarm() { chrome.alarms.create('cycle', { periodInMinutes: CYCLE_MIN, delayInMinutes: 2 }); }
 chrome.runtime.onInstalled.addListener(ensureAlarm);
