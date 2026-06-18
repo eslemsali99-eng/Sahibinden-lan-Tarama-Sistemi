@@ -24,7 +24,7 @@ if (!process.env.INGEST_TOKEN) { try { TOKEN = fs.readFileSync(path.join(cfg.OUT
 const SID = crypto.createHash('sha256').update(TEAM_PASS + '::bircan').digest('hex').slice(0, 32);
 const authed = (req) => (req.headers.cookie || '').includes('bircan_sid=' + SID);
 const hasToken = (req) => (req.headers['x-token'] || '') === TOKEN;
-const PUBLIC = ['/login', '/portfolio', '/musteri', '/api/portfolio', '/api/inquiry', '/harvester.js', '/kur', '/health'];
+const PUBLIC = ['/login', '/portfolio', '/musteri', '/api/portfolio', '/api/inquiry', '/harvester.js', '/kur', '/health', '/api/tg-webhook'];
 const TOKENR = ['/ingest', '/api/enrich', '/api/need-phone', '/api/need-check', '/api/mark-removed', '/api/mark-checked', '/api/notify-fresh', '/api/reconcile'];
 const LOGIN_HTML = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Giriş · Bircan Akın</title>
 <style>body{font-family:-apple-system,Arial;background:#0b1020;color:#e7ecf6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
@@ -42,18 +42,23 @@ function cors(res) {
 const readBody = (req) => new Promise((resolve) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => resolve(b)); });
 const sendJSON = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
 
-// SON ŞANS günlük özet — günde 1 kez (06:00 UTC = 09:00 TR sonrası ilk istekte). Render uykudan uyanınca tetiklenir.
-async function maybeDailyDigest() {
+// Türkiye saati (UTC+3) ve SESSİZ SAAT: 20:00-09:00 arası hiç bildirim gönderilmez
+const trHour = () => (new Date().getUTCHours() + 3) % 24;
+const isQuiet = () => { const h = trHour(); return h >= 20 || h < 9; };
+
+// SABAH 09:00 özeti: (a) gece 20:00 sonrası eklenen yeni ilanlar (bekletilenler) (b) dolmaya 1-2 gün kalanlar
+async function maybeMorning() {
   try {
     const today = new Date().toISOString().slice(0, 10);
-    if ((await getMeta('digest_date')) === today) return;
-    if (new Date().getUTCHours() < 15) return; // GÜN SONU: ~18:00 TR (15 UTC) sonrası gönder
-    await setMeta('digest_date', today); // slotu hemen al (çift gönderme yok)
-    // Dolmaya 1-2 gün kalanlar (days_on_site 28-29). "0 gün kaldı" (>=30) HARİÇ.
-    const rows = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 28 AND 29 ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
-    if (rows.length) notifier.notifyDigest(rows).catch(() => {});
-    console.log(`🔔 Son Şans günlük özet: ${rows.length} ilan`);
-  } catch (e) { console.log('digest hata:', e.message); }
+    if ((await getMeta('morning_date')) === today) return;
+    if (trHour() < 9) return; // 09:00 TR'den önce gönderme
+    await setMeta('morning_date', today); // slotu hemen al
+    const pend = await all('SELECT * FROM listings WHERE notify_pending=1 AND removed=0 ORDER BY days_on_site DESC LIMIT 40');
+    if (pend.length) { notifier.notifyMorningNew(pend).catch(() => {}); await run('UPDATE listings SET notify_pending=0 WHERE notify_pending=1'); }
+    const soon = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 28 AND 29 ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
+    if (soon.length) notifier.notifyDigest(soon).catch(() => {});
+    console.log(`🌅 Sabah özeti: ${pend.length} gece-yeni, ${soon.length} son-şans`);
+  } catch (e) { console.log('morning hata:', e.message); }
 }
 
 function normalize(meta, x) {
@@ -128,8 +133,8 @@ async function handle(req, res) {
     sendJSON(res, 200, { ok: true, processed: recs.length, fresh: fresh.length, drops: drops.length, total, freshUrls });
     console.log(`+${recs.length} (${meta.district}) yeni:${fresh.length} düşüş:${drops.length} -> DB ${total}`);
     // yeni ilan bildirimi BURADA DEĞİL -> notify-fresh'te toplu+telefonlu. Fiyat düşüşü HER ZAMAN (nadir, önemli).
-    if (drops.length) notifier.notifyPriceDrops(drops).catch(() => {});
-    maybeDailyDigest().catch(() => {}); // saatlik ingest'te günde 1 kez Son Şans özeti tetiklenir
+    if (drops.length && !isQuiet()) notifier.notifyPriceDrops(drops).catch(() => {});
+    maybeMorning().catch(() => {}); // saatlik ingest'te sabah 09:00 özeti tetiklenir
     return;
   }
 
@@ -219,6 +224,27 @@ async function handle(req, res) {
     return;
   }
 
+  // --- TELEGRAM webhook: butona basınca (Aradım/Sattı/Ulaşılamadı/Aranacak) sistemde durumu güncelle ---
+  if (req.method === 'POST' && pathOnly === '/api/tg-webhook') {
+    if ((req.headers['x-telegram-bot-api-secret-token'] || '') !== TOKEN) { res.writeHead(401); return res.end(); }
+    const body = await readBody(req);
+    let upd; try { upd = JSON.parse(body); } catch { res.writeHead(200); return res.end('{}'); }
+    const cq = upd.callback_query;
+    if (cq && cq.data) {
+      const [kind, id, val] = cq.data.split('|');
+      const by = (cq.from && (cq.from.first_name || cq.from.username)) || 'Telegram';
+      const now = new Date().toISOString();
+      try {
+        if (kind === 's') await run('UPDATE listings SET status=?, status_by=?, status_at=? WHERE id=?', [val, by, now, String(id)]);
+        else if (kind === 'v') await run('UPDATE listings SET verify_status=?, status_by=?, status_at=? WHERE id=?', [val, by, now, String(id)]);
+      } catch (e) {}
+      notifier.tgAnswer(cq.id, `✅ ${val}`).catch(() => {});
+      if (cq.message) notifier.tgMarkDone(cq.message.chat.id, cq.message.message_id, val, by).catch(() => {});
+      console.log(`☎️ Telegram buton: ${id} -> ${val} (${by})`);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{"ok":true}');
+  }
+
   // --- ID EŞLEME: liste sayfasındaki güncel ID'ler vs DB -> eksilenler = yayından kalktı (detay fetch YOK) ---
   if (req.method === 'POST' && pathOnly === '/api/reconcile') {
     const body = await readBody(req); const { district, ids } = JSON.parse(body);
@@ -229,7 +255,7 @@ async function handle(req, res) {
     const now = new Date().toISOString();
     for (const r of gone) await run("UPDATE listings SET removed=1, removed_date=?, verify_status='Teyit Bekliyor', last_check=? WHERE id=?", [now, now, String(r.id)]);
     sendJSON(res, 200, { ok: true, checked: dbRows.length, removed: gone.length });
-    if (gone.length) notifier.notifyRemoved(gone).catch(() => {});
+    if (gone.length && !isQuiet()) notifier.notifyRemoved(gone).catch(() => {});
     console.log(`🔎 reconcile ${district}: ${gone.length} kalktı / ${dbRows.length} aktif`);
     return;
   }
@@ -239,9 +265,15 @@ async function handle(req, res) {
     const body = await readBody(req); const { ids } = JSON.parse(body);
     if (ids && ids.length) {
       const sids = ids.map(String);
-      const rows = await all(`SELECT * FROM listings WHERE id IN (${sids.map(() => '?').join(',')}) AND removed=0`, sids);
-      if (rows.length) notifier.notifyNew(rows).catch(() => {});
-      console.log(`🔔 toplu bildirim: ${rows.length} yeni ilan`);
+      if (isQuiet()) {
+        // SESSİZ SAAT (20:00-09:00): bildirme, sabaha beklet
+        await batchWrite(sids.map((id) => ({ sql: 'UPDATE listings SET notify_pending=1 WHERE id=? AND removed=0', args: [id] })));
+        console.log(`🌙 sessiz saat: ${sids.length} yeni ilan sabaha bekletildi`);
+      } else {
+        const rows = await all(`SELECT * FROM listings WHERE id IN (${sids.map(() => '?').join(',')}) AND removed=0`, sids);
+        if (rows.length) notifier.notifyNew(rows).catch(() => {});
+        console.log(`🔔 anlık bildirim: ${rows.length} yeni ilan`);
+      }
     }
     return sendJSON(res, 200, { ok: true });
   }

@@ -16,13 +16,32 @@ function load() {
   catch { return { enabled: false, telegram: { token: '', chatIds: [] }, whatsapp: [] }; }
 }
 
-async function sendTelegram(token, chatId, text) {
+async function sendTelegram(token, chatId, text, buttons) {
   try {
+    const payload = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: false };
+    if (buttons) payload.reply_markup = buttons;
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: false }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
   } catch (e) { console.log('[notify] telegram hata:', e.message); }
+}
+// Telegram inline butonları (WhatsApp/CallMeBot buton desteklemez -> sadece Telegram)
+const statusButtons = (id) => ({ inline_keyboard: [
+  [{ text: '📞 Aradım', callback_data: `s|${id}|Arandı` }, { text: '🔜 Aranacak', callback_data: `s|${id}|Aranacak` }],
+  [{ text: '❌ Ulaşılamadı', callback_data: `s|${id}|Ulaşılamadı` }, { text: '🚫 Sattı/İlgilenmiyor', callback_data: `s|${id}|Satıldı` }],
+] });
+const verifyButtons = (id) => ({ inline_keyboard: [
+  [{ text: '✅ Satıldı', callback_data: `v|${id}|Satıldı` }, { text: '🤝 Vazgeçti', callback_data: `v|${id}|Vazgeçti` }],
+  [{ text: '🔁 Hâlâ Satıyor', callback_data: `v|${id}|Hâlâ Satıyor` }, { text: '❌ Ulaşılamadı', callback_data: `v|${id}|Ulaşılamadı` }],
+] });
+// buton callback yanıtı + mesajdaki butonları "✅ sonuç" ile değiştir
+async function tgAnswer(cqId, text) {
+  const c = load(); if (!c.telegram || !c.telegram.token) return;
+  try { await fetch(`https://api.telegram.org/bot${c.telegram.token}/answerCallbackQuery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callback_query_id: cqId, text }) }); } catch (e) {}
+}
+async function tgMarkDone(chatId, msgId, val, by) {
+  const c = load(); if (!c.telegram || !c.telegram.token) return;
+  try { await fetch(`https://api.telegram.org/bot${c.telegram.token}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [[{ text: `✅ ${val} • ${by}`, callback_data: 'noop' }]] } }) }); } catch (e) {}
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // CallMeBot HTML desteklemez -> Telegram etiketlerini temizle, düz metne çevir
@@ -44,41 +63,49 @@ function queueWhatsApp(phone, apikey, text) {
   return waChain;
 }
 
-// genel mesaj
-async function send(text) {
+// genel mesaj (buttons sadece Telegram'a; WhatsApp düz metin)
+async function send(text, buttons) {
   const c = load();
   if (!c.enabled) return;
   const jobs = [];
-  if (c.telegram && c.telegram.token) for (const id of (c.telegram.chatIds || [])) jobs.push(sendTelegram(c.telegram.token, id, text));
-  // WhatsApp: düz metin + kuyrukta sırayla (Telegram'a giden her şey WP'a da gider)
+  if (c.telegram && c.telegram.token) for (const id of (c.telegram.chatIds || [])) jobs.push(sendTelegram(c.telegram.token, id, text, buttons));
+  // WhatsApp: düz metin + kuyrukta sırayla (Telegram'a giden her şey WP'a da gider; buton yok)
   const plain = htmlToPlain(text);
   for (const w of (c.whatsapp || [])) if (w.phone && w.apikey) queueWhatsApp(w.phone, w.apikey, plain);
   await Promise.allSettled(jobs);
 }
 
-// iletişim satırı: telefon varsa numara, yoksa "mesajla", henüz çekilmediyse "panelde"
+// iletişim satırı: telefon varsa numara, yoksa mesajla (yanıltıcı "panelde" YOK)
 function contactLine(x) {
   if (x.phone) return `📞 ${x.phone}`;
-  if (x.contact_type === 'message') return `✉️ Telefon yok — sahibinden'de mesajla iletişim kabul ediyor`;
-  return `📞 Telefon panelde görünecek`;
+  return `✉️ Telefon yok — sahibinden'de mesajla iletişim`;
 }
 // link: HER ZAMAN kendi panelimizdeki ilana (sahibinden kalkınca genel sayfaya atıyor)
 const panelLink = (x) => `${PANEL}/?id=${encodeURIComponent(x.id)}`;
 
-// yeni ilanlar icin mesaj (telefon + panel linki ile)
+// yeni ilanlar (gündüz, anlık): PER-İLAN + Telegram aksiyon butonları (Aradım/Aranacak/Ulaşılamadı/Sattı)
 async function notifyNew(listings) {
   if (!listings.length) return;
   const c = load(); if (!c.enabled) return;
-  const top = listings.slice(0, 8);
-  const lines = top.map((x) => {
+  for (const x of listings.slice(0, 15)) {
     const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
-    const tip = x.property_type || '';
     const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
-    return `🏠 <b>${price}</b> ${tip} — ${yer}\n${contactLine(x)}\n👉 ${panelLink(x)}`;
+    const txt = `🏠 <b>YENİ EV SAHİBİ İLANI</b> — ilk arayan ol! 📞\n<b>${price}</b> ${x.property_type || ''} — ${yer}\n${contactLine(x)}\n👉 ${panelLink(x)}`;
+    await send(txt, statusButtons(x.id));
+  }
+}
+
+// SABAH özeti: gece 20:00 sonrası eklenenler (tek mesaj, butonsuz — sabah seli olmasın)
+async function notifyMorningNew(listings) {
+  if (!listings.length) return;
+  const c = load(); if (!c.enabled) return;
+  const lines = listings.slice(0, 12).map((x) => {
+    const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
+    const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
+    return `🏠 <b>${price}</b> ${x.property_type || ''} — ${yer}\n${contactLine(x)}\n👉 ${panelLink(x)}`;
   });
-  const more = listings.length > top.length ? `\n…ve ${listings.length - top.length} ilan daha` : '';
-  const header = `🚨 <b>${listings.length} YENİ EV SAHİBİ İLANI</b>\nİlk arayan ol! 📞\n\n`;
-  await send(header + lines.join('\n\n') + more);
+  const more = listings.length > 12 ? `\n…ve ${listings.length - 12} ilan daha (panelde)` : '';
+  await send(`🌅 <b>GÜNAYDIN — dün 20:00'den beri ${listings.length} yeni ev sahibi ilanı</b>\n\n` + lines.join('\n\n') + more);
 }
 
 // fiyat düşüşü bildirimi
@@ -95,18 +122,17 @@ async function notifyPriceDrops(drops) {
   await send(`💰 <b>${drops.length} İLANDA FİYAT DÜŞTÜ</b> — pazarlığa açık olabilir! 📞\n\n` + lines.join('\n\n'));
 }
 
-// yayından kalkan ilan bildirimi (teyit gerekiyor)
+// yayından kalkan ilan: PER-İLAN + Telegram teyit butonları (Satıldı/Vazgeçti/Hâlâ Satıyor/Ulaşılamadı)
 async function notifyRemoved(listings) {
   if (!listings.length) return;
   const c = load(); if (!c.enabled) return;
-  const lines = listings.slice(0, 8).map((x) => {
+  for (const x of listings.slice(0, 15)) {
     const price = x.price ? Number(x.price).toLocaleString('tr-TR') + ' ₺' : '';
     const yer = [x.district, x.neighborhood].filter(Boolean).join(' · ');
-    // sahibinden linki ölü -> kendi panelimizdeki o spesifik ilana yönlendir (Yayından Kalkanlar)
     const link = `${PANEL}/?tab=removed&id=${encodeURIComponent(x.id)}`;
-    return `📭 <b>${price}</b> ${x.property_type || ''} — ${yer}\n${contactLine(x)}\n👉 Panelde aç: ${link}`;
-  });
-  await send(`🔎 <b>${listings.length} İLAN YAYINDAN KALKTI</b> — Teyit gerekiyor!\nEv sahibini ara: sattı mı, vazgeçti mi? 📞\n\n` + lines.join('\n\n'));
+    const txt = `📭 <b>İLAN YAYINDAN KALKTI — teyit gerek</b>\n<b>${price}</b> ${x.property_type || ''} — ${yer}\n${contactLine(x)}\nEv sahibini ara: sattı mı, vazgeçti mi? 📞\n👉 ${link}`;
+    await send(txt, verifyButtons(x.id));
+  }
 }
 
 // SON ŞANS günlük özet: dolmaya çok az kalan ilanlar (yarın kalkabilir) — bugün ara!
@@ -123,4 +149,4 @@ async function notifyDigest(listings) {
   await send(`🔔 <b>SON ŞANS — bugün ara!</b>\nDolmaya çok az kaldı, yarın yayından kalkabilir 📞\n\n` + lines.join('\n\n') + more);
 }
 
-module.exports = { send, notifyNew, notifyPriceDrops, notifyRemoved, notifyDigest, load };
+module.exports = { send, notifyNew, notifyMorningNew, notifyPriceDrops, notifyRemoved, notifyDigest, tgAnswer, tgMarkDone, load };

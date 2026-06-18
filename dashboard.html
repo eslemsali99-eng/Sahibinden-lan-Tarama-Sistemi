@@ -138,7 +138,7 @@
 
 <script>
 let MODE='all', ALL=[];
-const STATUSES=['Yeni','Arandı','İzin Verdi','Reddetti','Ulaşılamadı'];
+const STATUSES=['Yeni','Aranacak','Arandı','İzin Verdi','Reddetti','Ulaşılamadı','Satıldı'];
 const VERIFY=['Teyit Bekliyor','Satıldı','Vazgeçti','Hâlâ Satıyor','Ulaşılamadı'];
 const $=(s)=>document.querySelector(s);
 function toggleTheme(){const l=document.documentElement.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');$('#themebtn').textContent=l?'🌙 Koyu':'☀️ Açık';}

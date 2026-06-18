@@ -47,6 +47,7 @@ const EXTRA_COLS = [
   ['status_by', 'TEXT'], ['status_at', 'TEXT'], // kim / ne zaman durum değiştirdi (hesap verebilirlik)
   ['description', 'TEXT'], ['images', 'TEXT'], // ilan açıklaması + tüm görseller (JSON) — kalkanlar için kritik
   ['contact_type', 'TEXT'], // 'phone' (telefon var) | 'message' (sahibinden telefonsuz, mesajla iletişim)
+  ['notify_pending', 'INTEGER DEFAULT 0'], // sessiz saatte (20:00-09:00) eklendi -> sabah özetinde bildirilecek
 ];
 
 let ready = null;
