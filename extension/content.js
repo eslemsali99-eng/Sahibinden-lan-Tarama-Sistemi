@@ -203,10 +203,10 @@
     }
     // TEK TOPLU bildirim (telefonlar artık çekildi) — sel yok, tek mesajda hepsi telefonuyla
     if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
-    // 3) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust) — en önemli kısım
+    // 3) TELEFON (ÖNCELİK: dolmaya yakın): kalkmadan ÖNCE telefon+detay çek — kalkanlar dolu olsun diye
+    if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(12);
+    // 4) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust)
     if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await removalSweep();
-    // 4) TELEFON: telefonsuz birkaç ilanı detaydan doldur (hafif, blok riski sınırlı)
-    if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(10);
     log(`✅ tur bitti`, '#0f0');
   }
   function setAuto(on) {

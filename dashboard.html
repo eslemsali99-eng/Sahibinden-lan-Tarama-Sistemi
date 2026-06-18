@@ -227,8 +227,11 @@ function openDetail(id){
       <div style="font-weight:700;font-size:14px">${x.title||''}</div>
       ${x.description?`<div class="ddesc">${(x.description||'').replace(/</g,'&lt;')}</div>`:'<div class="muted" style="margin-top:10px">Açıklama henüz çekilmedi — 7/24 detay taramasında gelecek.</div>'}
       <div class="dact">
-        ${x.url?`<a href="${x.url}" target="_blank" style="background:var(--acc);color:#fff">Sahibinden'de aç ↗</a>`:''}
+        ${x.phone?`<a href="tel:${x.phone}" style="background:var(--acc);color:#fff">📞 Ara: ${x.phone}</a>`:''}
         ${wa?`<a href="${wa}" target="_blank" style="background:#25d366;color:#073">WhatsApp</a>`:''}
+        ${x.removed==1
+          ? `<span style="background:var(--panel2);color:var(--mut);padding:11px 16px;border-radius:9px;font-size:12px">📭 Sahibinden'den kalktı — bilgiler sistemimizde saklı</span>`
+          : (x.url?`<a href="${x.url}" target="_blank" style="background:var(--panel2);color:var(--txt)">Sahibinden ↗</a>`:'')}
       </div>
     </div>`;
   $('#dmodal').classList.add('open');
@@ -270,7 +273,7 @@ function render(){
     <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select>${x.status_by?`<div class="byline">👤 ${x.status_by} · ${fmtDate(x.status_at)}</div>`:''}</td>
     <td>${x.removed==1?`<select class="stsel" onchange="upd('${x.id}','verify_status',this.value)">${VERIFY.map(v=>`<option ${(x.verify_status||'Teyit Bekliyor')===v?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>'}</td>
     <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>
-    <td><a class="go" href="${x.url}" target="_blank">Aç ↗</a></td></tr>`}).join('');
+    <td><button class="go" style="border:none;cursor:pointer" onclick="openDetail('${x.id}')">👁 Detay</button>${x.removed!=1&&x.url?`<a class="go" href="${x.url}" target="_blank" style="background:var(--panel2);color:var(--txt);margin-top:4px;display:inline-block">Sahibinden ↗</a>`:''}</td></tr>`}).join('');
 }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');MODE=b.dataset.mode;render();});
 ['q','district','type','status','sort'].forEach(id=>$('#'+id).addEventListener('input',render));
