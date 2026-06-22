@@ -190,36 +190,43 @@
     log('   ✅ kalkan taraması bitti', '#0f0');
   }
 
+  let cycleRunning = false; // KİLİT: aynı anda iki tur birden çalışmasın (manuel buton + alarm/önceki tur çakışması)
   async function autoCycle() {
-    const bu = +(localStorage.getItem('bircan_blocked_until') || 0);
-    if (Date.now() < bu) { log(`⏸️ blok bekleme — ~${Math.ceil((bu - Date.now()) / 3.6e6)} saat sonra`, '#fa0'); return; }
-    log(`🔄 oto tur ${new Date().toLocaleTimeString('tr-TR')}`, '#9cf');
-    // 1) TARAMA: her ilçe ilk 2 sayfa -> yeni ilan url'leri
-    const fresh = [];
-    for (const d of DISTRICTS) {
-      const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden' };
-      for (let p = 0; p < 2; p++) {
-        const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
-        if (!res.ok) { setBlock(); return; }
-        const rows = parsePage(res.doc); if (!rows.length) break;
-        try { const r = await jpost(ING, { meta, rows }); if (r && r.freshUrls && r.freshUrls.length) { fresh.push(...r.freshUrls); log(`   +${r.freshUrls.length} yeni (${d.name})`, '#0f0'); } } catch (e) { return; }
-        await sleep(rnd(PAGE_MIN, PAGE_MAX));
+    if (cycleRunning) { log('⏭️ önceki tur hâlâ çalışıyor — bu tetikleme atlandı', '#888'); return; }
+    cycleRunning = true;
+    try {
+      const bu = +(localStorage.getItem('bircan_blocked_until') || 0);
+      if (Date.now() < bu) { log(`⏸️ blok bekleme — ~${Math.ceil((bu - Date.now()) / 3.6e6)} saat sonra`, '#fa0'); return; }
+      log(`🔄 oto tur ${new Date().toLocaleTimeString('tr-TR')}`, '#9cf');
+      // 1) TARAMA: her ilçe ilk 2 sayfa -> yeni ilan url'leri
+      const fresh = [];
+      for (const d of DISTRICTS) {
+        const meta = { district: d.name, categoryTxn: 'Satılık', baseType: 'Konut', sellerType: 'sahibinden' };
+        for (let p = 0; p < 2; p++) {
+          const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
+          if (!res.ok) { setBlock(); return; }
+          const rows = parsePage(res.doc); if (!rows.length) break;
+          try { const r = await jpost(ING, { meta, rows }); if (r && r.freshUrls && r.freshUrls.length) { fresh.push(...r.freshUrls); log(`   +${r.freshUrls.length} yeni (${d.name})`, '#0f0'); } } catch (e) { return; }
+          await sleep(rnd(PAGE_MIN, PAGE_MAX));
+        }
+        await sleep(rnd(DIST_MIN, DIST_MAX));
       }
-      await sleep(rnd(DIST_MIN, DIST_MAX));
+      // 2) YENİ ilanları GERÇEK arka-plan sekmelerinde aç (SW) -> o sayfaların content script'i telefonu çeker (blok yok)
+      const freshIds = fresh.map((f) => String(f.id));
+      if (fresh.length) {
+        log(`   📞 ${Math.min(fresh.length, 12)} yeni ilan telefonu çekiliyor (arka sekme, gerçek gezinme)...`, '#9cf');
+        try { await chrome.runtime.sendMessage({ type: 'enrichViaTabs', items: fresh.slice(0, 12).map((f) => ({ id: f.id, url: f.url.startsWith('http') ? f.url : BASE + f.url })) }); } catch (e) {}
+      }
+      // TEK TOPLU bildirim (telefonlar artık çekildi) — sel yok, tek mesajda hepsi telefonuyla
+      if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
+      // 3) TELEFON (ÖNCELİK: dolmaya yakın): kalkmadan ÖNCE telefon+detay çek — kalkanlar dolu olsun diye
+      if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(12);
+      // 4) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust)
+      if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await removalSweep();
+      log(`✅ tur bitti`, '#0f0');
+    } finally {
+      cycleRunning = false;
     }
-    // 2) YENİ ilanları GERÇEK arka-plan sekmelerinde aç (SW) -> o sayfaların content script'i telefonu çeker (blok yok)
-    const freshIds = fresh.map((f) => String(f.id));
-    if (fresh.length) {
-      log(`   📞 ${Math.min(fresh.length, 12)} yeni ilan telefonu çekiliyor (arka sekme, gerçek gezinme)...`, '#9cf');
-      try { await chrome.runtime.sendMessage({ type: 'enrichViaTabs', items: fresh.slice(0, 12).map((f) => ({ id: f.id, url: f.url.startsWith('http') ? f.url : BASE + f.url })) }); } catch (e) {}
-    }
-    // TEK TOPLU bildirim (telefonlar artık çekildi) — sel yok, tek mesajda hepsi telefonuyla
-    if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
-    // 3) TELEFON (ÖNCELİK: dolmaya yakın): kalkmadan ÖNCE telefon+detay çek — kalkanlar dolu olsun diye
-    if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(12);
-    // 4) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust)
-    if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await removalSweep();
-    log(`✅ tur bitti`, '#0f0');
   }
   function setAuto(on) {
     localStorage.setItem('bircan_auto', on ? '1' : '');
