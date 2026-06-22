@@ -32,8 +32,8 @@
   // SW yeni/telefonsuz ilanı arka-plan sekmesinde açınca burası çalışır; ekip elle açınca da çalışır (pasif yakalama).
   const isDetail = /\/ilan\//.test(location.pathname);
   async function captureDetailPhone() {
+    const idm = location.pathname.match(/(\d{6,})/); const id = idm ? idm[1] : null;
     try {
-      const idm = location.pathname.match(/(\d{6,})/); const id = idm ? idm[1] : null;
       if (!id) return;
       await sleep(2500);
       // KRİTİK: DataDome doğrulama/blok sayfasıysa bu gerçek ilan değildir -> telefon/mesaj durumu
@@ -55,7 +55,13 @@
       const images = [...new Set([...document.querySelectorAll('img')].map((im) => im.getAttribute('src') || im.getAttribute('data-src') || '').filter((s) => /shbdn\.com\/photos/i.test(s)))].slice(0, 12);
       const tapu = (((document.body.innerText.match(/Tapu Durumu\s*:?\s*([A-Za-zÇĞİÖŞÜçğıöşü\/ ]{3,30})/) || [])[1]) || '').trim() || null;
       await jpostEarly(ENR, { id, phone, ownership_type: tapu, description, images, contact_type: phone ? 'phone' : 'message', verified_owner: 1 });
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      // SW'ye "işim bitti, sekmeyi kapatabilirsin" sinyali — sabit 15sn beklemek yerine.
+      // Arka plan (active:false) sekmeler throttle edilip içerideki sleep()'ler 15sn'den uzun
+      // sürebiliyordu; SW süre dolunca sekmeyi erken kapatınca telefon/mesaj hiç POST edilemiyordu.
+      if (id) { try { chrome.runtime.sendMessage({ type: 'detailDone', id }); } catch (e) {} }
+    }
   }
   if (isDetail) { captureDetailPhone(); return; }
 
