@@ -203,7 +203,7 @@ async function handle(req, res) {
     // STRATEJİ: dolmaya yakın (days_on_site yüksek = ~30 güne yakın) telefonsuz ilanları ÖNCE çek.
     // Çünkü yakında yayından kalkacaklar; kalkmadan telefonu yakalamalıyız + en motive satıcı onlar.
     // ÖNCELİK: dolmaya yakın pencere (25-31 gün = ~30 güne ≤5) en önce; sonra diğerleri. 361 gün gibi eski/yenilenmişleri öne atma.
-    const rows = await all("SELECT id,url,image_url,days_on_site FROM listings WHERE removed=0 AND is_active=1 AND (phone IS NULL OR phone='') AND contact_type IS NULL ORDER BY (days_on_site BETWEEN 25 AND 31) DESC, days_on_site DESC LIMIT 400");
+    const rows = await all("SELECT id,url,image_url,days_on_site FROM listings WHERE removed=0 AND is_active=1 AND (phone IS NULL OR phone='') AND contact_type IS NULL ORDER BY notify_when_resolved DESC, (days_on_site BETWEEN 25 AND 31) DESC, days_on_site DESC LIMIT 400");
     return sendJSON(res, 200, rows);
   }
   if (req.method === 'POST' && pathOnly === '/api/mark-checked') {
@@ -261,18 +261,27 @@ async function handle(req, res) {
   }
 
   // --- yeni ilanlar TEK toplu bildirim (telefonlar çekildikten sonra) ---
+  // ATLANAMAZ KURAL: telefon/mesaj durumu (contact_type) henüz denenmemiş ilan ASLA bildirilmez.
+  // Bunlar notify_when_resolved=1 ile işaretlenir; /api/enrich durumu netleştirdiğinde otomatik bildirir.
   if (req.method === 'POST' && pathOnly === '/api/notify-fresh') {
     const body = await readBody(req); const { ids } = JSON.parse(body);
     if (ids && ids.length) {
       const sids = ids.map(String);
-      if (isQuiet()) {
-        // SESSİZ SAAT (20:00-09:00): bildirme, sabaha beklet
-        await batchWrite(sids.map((id) => ({ sql: 'UPDATE listings SET notify_pending=1 WHERE id=? AND removed=0', args: [id] })));
-        console.log(`🌙 sessiz saat: ${sids.length} yeni ilan sabaha bekletildi`);
-      } else {
-        const rows = await all(`SELECT * FROM listings WHERE id IN (${sids.map(() => '?').join(',')}) AND removed=0`, sids);
-        if (rows.length) notifier.notifyNew(rows).catch(() => {});
-        console.log(`🔔 anlık bildirim: ${rows.length} yeni ilan`);
+      const rows = await all(`SELECT * FROM listings WHERE id IN (${sids.map(() => '?').join(',')}) AND removed=0`, sids);
+      const resolved = rows.filter((r) => r.contact_type);
+      const pending = rows.filter((r) => !r.contact_type);
+      if (pending.length) {
+        await batchWrite(pending.map((r) => ({ sql: 'UPDATE listings SET notify_when_resolved=1 WHERE id=?', args: [r.id] })));
+        console.log(`⏳ ${pending.length} yeni ilan telefon/mesaj durumu bekleniyor — bildirim sonraya bırakıldı`);
+      }
+      if (resolved.length) {
+        if (isQuiet()) {
+          await batchWrite(resolved.map((r) => ({ sql: 'UPDATE listings SET notify_pending=1 WHERE id=?', args: [r.id] })));
+          console.log(`🌙 sessiz saat: ${resolved.length} yeni ilan sabaha bekletildi`);
+        } else {
+          notifier.notifyNew(resolved).catch(() => {});
+          console.log(`🔔 anlık bildirim: ${resolved.length} yeni ilan`);
+        }
       }
     }
     return sendJSON(res, 200, { ok: true });
@@ -288,8 +297,16 @@ async function handle(req, res) {
     const imgs = e.images ? (typeof e.images === 'string' ? e.images : JSON.stringify(e.images)) : null;
     await run('UPDATE listings SET phone=COALESCE(?,phone), seller_name=COALESCE(?,seller_name), ownership_type=COALESCE(?,ownership_type), verified_owner=COALESCE(?,verified_owner), description=COALESCE(?,description), images=COALESCE(?,images), contact_type=COALESCE(?,contact_type) WHERE id=?',
       [e.phone || null, e.seller_name || null, e.ownership_type || null, (e.verified_owner == null ? null : (e.verified_owner ? 1 : 0)), e.description || null, imgs, e.contact_type || null, String(e.id)]);
-    // yeni ilan: telefon/detay çekildikten sonra TELEFONLA birlikte bildir
-    if (e.notify) { const row = await get('SELECT * FROM listings WHERE id=?', [String(e.id)]); if (row && !row.removed) notifier.notifyNew([row]).catch(() => {}); }
+    const row = await get('SELECT * FROM listings WHERE id=?', [String(e.id)]);
+    if (row && !row.removed) {
+      if (e.notify) notifier.notifyNew([row]).catch(() => {}); // eski tekil bildirim yolu
+      else if (row.notify_when_resolved && row.contact_type) {
+        // telefon/mesaj durumu artık netleşti -> bekletilen bildirim şimdi gönderilir
+        await run('UPDATE listings SET notify_when_resolved=0 WHERE id=?', [String(e.id)]);
+        if (isQuiet()) await run('UPDATE listings SET notify_pending=1 WHERE id=?', [String(e.id)]);
+        else notifier.notifyNew([row]).catch(() => {});
+      }
+    }
     return sendJSON(res, 200, { ok: true });
   }
 

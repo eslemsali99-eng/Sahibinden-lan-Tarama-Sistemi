@@ -48,6 +48,7 @@ const EXTRA_COLS = [
   ['description', 'TEXT'], ['images', 'TEXT'], // ilan açıklaması + tüm görseller (JSON) — kalkanlar için kritik
   ['contact_type', 'TEXT'], // 'phone' (telefon var) | 'message' (sahibinden telefonsuz, mesajla iletişim)
   ['notify_pending', 'INTEGER DEFAULT 0'], // sessiz saatte (20:00-09:00) eklendi -> sabah özetinde bildirilecek
+  ['notify_when_resolved', 'INTEGER DEFAULT 0'], // telefon/mesaj durumu HENÜZ netleşmedi -> netleşince bildir (asla telefonsuz/denenmemiş bildirme)
 ];
 
 let ready = null;
