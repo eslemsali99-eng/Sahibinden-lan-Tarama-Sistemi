@@ -207,7 +207,8 @@ function openDetail(id){
   const wa=waLink(x.phone);
   const phoneHtml = x.phone
     ? `<a href="tel:${x.phone}" style="color:var(--green);font-weight:800;text-decoration:none">${x.phone}</a>${wa?` · <a class="wa" href="${wa}" target="_blank">WA</a>`:''}`
-    : (x.contact_type==='message'?'<span style="color:var(--amber);font-weight:700">✉️ Telefon yok — mesajla iletişim</span>':'<span class="muted">henüz çekilmedi</span>');
+    : (x.contact_type==='message'?'<span style="color:var(--amber);font-weight:700">✉️ Telefon yok — mesajla iletişim</span>'
+      :(x.removed==1?'<span class="muted" title="İlan yayından kalkmadan telefon çekilemedi; sahibinden sayfası artık yok, bu bilgi kalıcı olarak kayıp">❔ Veri yok — eski dönem</span>':'<span class="muted">henüz çekilmedi</span>'));
   $('#dsheet').innerHTML=`
     <button class="dclose" onclick="closeDetail()">×</button>
     ${imgs.length?`<div class="dimgs">${imgs.map(u=>`<img src="${u}" referrerpolicy="no-referrer">`).join('')}</div>`:''}
@@ -269,7 +270,7 @@ function render(){
     <td>${x.area_m2?x.area_m2+' m²':''}${x.rooms?' · '+x.rooms:''}</td>
     <td class="muted">${x.listing_date||''}</td><td class="sysdate">${fmtDate(x.first_seen)}</td><td>${x.days_on_site??''}</td>
     <td class="${leftClass(x.days_left)}">${x.days_left??''}</td>
-    <td class="col-phone">${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:(x.contact_type==='message'?'<span style="color:var(--amber);font-weight:600" title="Sahibinden\'de telefon yok, mesajla iletişim">✉️ Mesajla</span>':'<span class="muted">—</span>')}</td>
+    <td class="col-phone">${x.phone?`<a href="tel:${x.phone}" style="color:#74e6a4;font-weight:700;text-decoration:none">${x.phone}</a>${wa?`<a class="wa" href="${wa}" target="_blank">WA</a>`:''}`:(x.contact_type==='message'?'<span style="color:var(--amber);font-weight:600" title="Sahibinden\'de telefon yok, mesajla iletişim">✉️ Mesajla</span>':(x.removed==1?'<span class="muted" title="İlan yayından kalkmadan telefon çekilemedi; sahibinden sayfası artık yok, kalıcı olarak kayıp">❔ Eski dönem</span>':'<span class="muted">—</span>'))}</td>
     <td><select class="stsel" onchange="upd('${x.id}','status',this.value)">${STATUSES.map(s=>`<option ${(x.status||'Yeni')===s?'selected':''}>${s}</option>`).join('')}</select>${x.status_by?`<div class="byline">👤 ${x.status_by} · ${fmtDate(x.status_at)}</div>`:''}</td>
     <td>${x.removed==1?`<select class="stsel" onchange="upd('${x.id}','verify_status',this.value)">${VERIFY.map(v=>`<option ${(x.verify_status||'Teyit Bekliyor')===v?'selected':''}>${v}</option>`).join('')}</select>`:'<span class="muted">—</span>'}</td>
     <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>
