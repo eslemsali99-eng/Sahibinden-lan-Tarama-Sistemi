@@ -25,6 +25,10 @@
   .mcard .lbl{font-size:11.5px;color:var(--mut)}
   .mcard.hot{border-color:var(--gold)}.mcard.hot .num{color:var(--gold)}
   .mcard.warn .num{color:var(--amber)} .mcard.new .num{color:var(--green)}
+  .mcard.clickable{cursor:pointer} .mcard.sel{border-color:var(--acc);box-shadow:0 0 0 2px rgba(79,140,255,.25)}
+  .bar.clickable{cursor:pointer;border-radius:7px;padding:2px 4px;margin:5px -4px}
+  .bar.clickable:hover{background:var(--hover)} .bar.sel .nm{color:var(--acc)} .bar.sel .fill{background:linear-gradient(90deg,var(--acc),#7db1ff)!important}
+  .qchip{display:inline-flex;align-items:center;gap:5px;background:var(--badgebg);color:var(--badgetx);border-radius:20px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer;margin-inline-start:8px}
   .chartwrap{padding:0 22px 6px}.chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
   .chart h4{margin:0 0 10px;font-size:12px;color:var(--mut);font-weight:600}
   .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:12.5px}
@@ -171,18 +175,40 @@ async function upd(id, field, value){
   const r=ALL.find(x=>String(x.id)===String(id)); if(r){ r[field]=value; if(field==='status'||field==='verify_status'){ r.status_by=me; r.status_at=new Date().toISOString(); } }
   if(field==='shared'||field==='status'||field==='verify_status') render(); loadStats();
 }
+let QUICK='';
+function setMode(mode){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode));
+  MODE=mode; render();
+}
+function metricClick(act){
+  if(!act)return;
+  if(act==='phone'||act==='processed'){ QUICK=act; setMode('all'); }
+  else if(act==='all'){ QUICK=''; $('#q').value=''; $('#district').value=''; $('#type').value=''; $('#status').value=''; setMode('all'); }
+  else { QUICK=''; setMode(act); }
+}
+function districtClick(d){ $('#district').value = ($('#district').value===d) ? '' : d; render(); }
 async function loadStats(){
   try{ const s=await fetch('/api/stats').then(r=>r.json());
-    $('#metrics').innerHTML=[
-      ['🏠',s.total,'Toplam İlan',''],['🆕',s.new24h,'Yeni (24 saat)','new'],
-      ['⏳',s.expiring,'Dolmaya Yakın','hot'],['📞',s.withPhone,'Telefonlu',''],
-      ['⭐',s.portfolio,'Portföyde',''],['📩',s.inquiries,'Müşteri Talebi',''],
-      ['📭',s.removed,'Yayından Kalkan','warn'],['☎️',s.arananlar,'İşlenen','warn'],['🗺️',s.districts,'İlçe','']
-    ].map(([i,n,l,c])=>`<div class="mcard ${c}"><div class="ico">${i}</div><div class="num">${fmt(n)}</div><div class="lbl">${l}</div></div>`).join('');
+    const M=[['🏠',s.total,'Toplam İlan','','all'],['🆕',s.new24h,'Yeni (24 saat)','new','new'],
+      ['⏳',s.expiring,'Dolmaya Yakın','hot','expiring'],['📞',s.withPhone,'Telefonlu','','phone'],
+      ['⭐',s.portfolio,'Portföyde','','portfolio'],['📩',s.inquiries,'Müşteri Talebi','',''],
+      ['📭',s.removed,'Yayından Kalkan','warn','removed'],['☎️',s.arananlar,'İşlenen','warn','processed'],['🗺️',s.districts,'İlçe','','']];
+    $('#metrics').innerHTML=M.map(([i,n,l,c,act])=>`<div class="mcard ${c}${act?' clickable':''}" data-act="${act}"><div class="ico">${i}</div><div class="num">${fmt(n)}</div><div class="lbl">${l}</div></div>`).join('');
+    $('#metrics').querySelectorAll('.mcard.clickable').forEach(el=>el.onclick=()=>metricClick(el.dataset.act));
     const mx=Math.max(1,...s.byDistrict.map(d=>d.c)); const tot=s.byDistrict.reduce((a,d)=>a+d.c,0)||1;
-    $('#chart').innerHTML=s.byDistrict.map(d=>`<div class="bar${d.c===mx?' top':''}"><span class="nm">${d.district}</span><span class="track"><span class="fill" style="width:${d.c/mx*100}%"></span></span><span class="v">${fmt(d.c)}<small>%${Math.round(d.c/tot*100)}</small></span></div>`).join('')||'<span class="muted">—</span>';
+    $('#chart').innerHTML=s.byDistrict.map(d=>`<div class="bar${d.c===mx?' top':''} clickable" data-d="${d.district}"><span class="nm">${d.district}</span><span class="track"><span class="fill" style="width:${d.c/mx*100}%"></span></span><span class="v">${fmt(d.c)}<small>%${Math.round(d.c/tot*100)}</small></span></div>`).join('')||'<span class="muted">—</span>';
+    $('#chart').querySelectorAll('.bar.clickable').forEach(el=>el.onclick=()=>districtClick(el.dataset.d));
     if(s.lastScrape){ const h=(Date.now()-new Date(s.lastScrape).getTime())/3.6e6; const c=h<2?'var(--green)':h<24?'var(--amber)':'var(--red)'; $('#fresh').innerHTML=` · <span style="color:${c}">⟳ tarama ${h<1?Math.round(h*60)+'dk':Math.round(h)+'sa'} önce</span>`; }
+    syncActiveStates();
   }catch(e){}
+}
+function syncActiveStates(){
+  const d=$('#district')?$('#district').value:'';
+  document.querySelectorAll('#chart .bar').forEach(el=>el.classList.toggle('sel', !!d && el.dataset.d===d));
+  document.querySelectorAll('#metrics .mcard').forEach(el=>{
+    const act=el.dataset.act;
+    el.classList.toggle('sel', !!act && ((act==='all'&&MODE==='all'&&!QUICK) || act===QUICK || (act===MODE && !QUICK && act!=='all')));
+  });
 }
 async function load(){
   try{ ALL=await fetch('/api/listings?seller=sahibinden').then(r=>r.json()); computeDups(); fillFilters(); render();
@@ -256,10 +282,14 @@ function render(){
   if(MODE==='expiring')r=r.filter(x=>x.days_on_site>=25&&x.days_on_site<=31);
   if(MODE==='portfolio')r=r.filter(x=>x.shared==1);
   if(MODE==='new'){const c=Date.now()-864e5;r=r.filter(x=>x.first_seen&&new Date(x.first_seen).getTime()>=c);}
+  if(QUICK==='phone')r=r.filter(x=>x.phone);
+  if(QUICK==='processed')r=r.filter(x=>(x.status||'Yeni')!=='Yeni');
   const by={heat:(a,b)=>heat(b)-heat(a),new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};
   r.sort(by[s]||by.heat);
   document.body.classList.toggle('no-phone', !ALL.some(x=>x.phone||x.contact_type));
-  $('#count').textContent=r.length+' ilan'; $('#empty').style.display=r.length?'none':'block';
+  const qlbl=QUICK==='phone'?' <span class="qchip" onclick="metricClick(\'all\')">📞 Telefonlu ✕</span>':QUICK==='processed'?' <span class="qchip" onclick="metricClick(\'all\')">☎️ İşlenen ✕</span>':'';
+  $('#count').innerHTML=r.length+' ilan'+qlbl; $('#empty').style.display=r.length?'none':'block';
+  syncActiveStates();
   if(!r.length) $('#empty').textContent = MODE==='removed' ? '📭 Henüz yayından kalkan ilan yok. 7/24 taraması günde 1 kez tüm listeyi kontrol eder; bizde olup sahibinden\'de kalkan ilanlar otomatik buraya düşer (eklenti v2.7+ ve aktif 7/24 gerekir).' : 'Veri bekleniyor…';
   $('#rows').innerHTML=r.map(x=>{const wa=waLink(x.phone);return `<tr data-id="${x.id}">
     <td>${x.image_url?`<img class="thumb" loading="lazy" src="${x.image_url}" referrerpolicy="no-referrer" onclick="openDetail('${x.id}')" style="cursor:pointer" title="Detay">`:`<button onclick="openDetail('${x.id}')" style="background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--mut);width:84px;height:60px;cursor:pointer" title="Detay">👁</button>`}</td>
@@ -276,7 +306,7 @@ function render(){
     <td><button class="pfbtn ${x.shared?'on':''}" onclick="upd('${x.id}','shared',${x.shared?0:1})">${x.shared?'✓':'+ Ekle'}</button></td>
     <td><button class="go" style="border:none;cursor:pointer" onclick="openDetail('${x.id}')">👁 Detay</button>${x.removed!=1&&x.url?`<a class="go" href="${x.url}" target="_blank" style="background:var(--panel2);color:var(--txt);margin-top:4px;display:inline-block">Sahibinden ↗</a>`:''}</td></tr>`}).join('');
 }
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');MODE=b.dataset.mode;render();});
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{QUICK='';setMode(b.dataset.mode);});
 ['q','district','type','status','sort'].forEach(id=>$('#'+id).addEventListener('input',render));
 $('#me').value=localStorage.getItem('bircan_me')||'';
 $('#me').addEventListener('input',e=>localStorage.setItem('bircan_me',e.target.value.trim()));

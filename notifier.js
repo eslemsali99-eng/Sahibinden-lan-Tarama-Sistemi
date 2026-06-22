@@ -75,10 +75,12 @@ async function send(text, buttons) {
   await Promise.allSettled(jobs);
 }
 
-// iletişim satırı: telefon varsa numara, yoksa mesajla (yanıltıcı "panelde" YOK)
+// iletişim satırı: telefon varsa numara; gerçekten KONTROL EDİLİP telefonsuz çıktıysa dürüst 'mesajla';
+// hiç kontrol edilmediyse (contact_type yok) "telefon yok" YALANI söylenmez, "bilinmiyor" denir.
 function contactLine(x) {
   if (x.phone) return `📞 ${x.phone}`;
-  return `✉️ Telefon yok — sahibinden'de mesajla iletişim`;
+  if (x.contact_type === 'message') return `✉️ Telefon yok — sahibinden'de mesajla iletişim`;
+  return `❔ Telefon durumu bilinmiyor — henüz kontrol edilemedi`;
 }
 // link: HER ZAMAN kendi panelimizdeki ilana (sahibinden kalkınca genel sayfaya atıyor)
 const panelLink = (x) => `${PANEL}/?id=${encodeURIComponent(x.id)}`;
