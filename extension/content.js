@@ -36,6 +36,12 @@
       const idm = location.pathname.match(/(\d{6,})/); const id = idm ? idm[1] : null;
       if (!id) return;
       await sleep(2500);
+      // KRİTİK: DataDome doğrulama/blok sayfasıysa bu gerçek ilan değildir -> telefon/mesaj durumu
+      // KESİNLİKLE belirlenmesin (yoksa "blok" ile "telefon yok" karışır, yalan 'Mesajla' yazılır).
+      if (/Basılı Tut|Olağan dışı|Bağlantınız kontrol/i.test(document.body.innerText)) {
+        localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6));
+        return;
+      }
       // "Numarayı/Telefonu Göster" butonu varsa tıkla (telefon AJAX ile gelir)
       const btns = [...document.querySelectorAll('button,a,span')].filter((e) => /numara(yı)? göster|telefonu göster|cep.*göster/i.test((e.textContent || '').trim()));
       for (const b of btns.slice(0, 3)) { try { b.click(); } catch (e) {} }
