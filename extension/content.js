@@ -206,7 +206,11 @@
           const res = await getPage(`${BASE}/satilik/${d.slug}/sahibinden?sorting=date_desc&pagingOffset=${p * 20}`);
           if (!res.ok) { setBlock(); return; }
           const rows = parsePage(res.doc); if (!rows.length) break;
-          try { const r = await jpost(ING, { meta, rows }); if (r && r.freshUrls && r.freshUrls.length) { fresh.push(...r.freshUrls); log(`   +${r.freshUrls.length} yeni (${d.name})`, '#0f0'); } } catch (e) { return; }
+          try {
+            const r = await jpost(ING, { meta, rows });
+            if (r && r.error) { log(`🚫 sunucu reddetti: ${r.error} — token yanlış olabilir (config.js)`, '#f55'); return; }
+            if (r && r.freshUrls && r.freshUrls.length) { fresh.push(...r.freshUrls); log(`   +${r.freshUrls.length} yeni (${d.name})`, '#0f0'); }
+          } catch (e) { log(`🚫 sunucuya ulaşılamadı: ${e.message || e}`, '#f55'); return; }
           await sleep(rnd(PAGE_MIN, PAGE_MAX));
         }
         await sleep(rnd(DIST_MIN, DIST_MAX));
