@@ -353,13 +353,7 @@ async function handle(req, res) {
     catch { res.writeHead(500); return res.end('portfolio.html yok'); }
   }
 
-  // TEK SEFERLIK: Karacabey Bağ/Bahçe+Arsa yanlışlıkla removed işaretlendi → geri al
-  if (req.method === 'POST' && pathOnly === '/api/restore-karacabey' && authed(req)) {
-    const r = await run("UPDATE listings SET removed=0, removed_date=NULL, verify_status=NULL WHERE district='Karacabey' AND property_type IN ('Bağ/Bahçe','Arsa','Arazi') AND removed=1");
-    console.log(`♻️ Karacabey restore: ${r.rowsAffected} ilan geri alındı`);
-    return sendJSON(res, 200, { restored: r.rowsAffected });
-  }
-  if (req.method === 'GET' && pathOnly === '/status') {
+if (req.method === 'GET' && pathOnly === '/status') {
     const byType = await all('SELECT seller_type, COUNT(*) c FROM listings GROUP BY seller_type');
     const byDist = await all('SELECT district, COUNT(*) c FROM listings GROUP BY district');
     return sendJSON(res, 200, { byType, byDist });
