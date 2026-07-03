@@ -335,8 +335,8 @@ async function handle(req, res) {
 
   // TEK SEFERLIK TEMIZLIK — kullanıldıktan sonra bu blok silinecek
   if (req.method === 'POST' && pathOnly === '/api/admin-cleanup' && (hasToken(req) || authed(req))) {
-    const r1 = await client.execute("DELETE FROM listings WHERE removed=1 AND (phone IS NULL OR phone='') AND (description IS NULL OR description='')");
-    const r2 = await client.execute("DELETE FROM listings WHERE district='Karacabey' AND property_type NOT IN ('Bağ/Bahçe','Arsa','Arazi')");
+    const r1 = await run("DELETE FROM listings WHERE removed=1 AND (phone IS NULL OR phone='') AND (description IS NULL OR description='')");
+    const r2 = await run("DELETE FROM listings WHERE district='Karacabey' AND property_type NOT IN ('Bağ/Bahçe','Arsa','Arazi')");
     console.log(`🗑️ Cleanup: ${r1.rowsAffected} kalkan silindi, ${r2.rowsAffected} Karacabey tipi silindi`);
     return sendJSON(res, 200, { kaldirilanKalkan: r1.rowsAffected, kaldirilanKaracabey: r2.rowsAffected });
   }
