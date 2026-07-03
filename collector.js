@@ -228,8 +228,10 @@ async function handle(req, res) {
       if (r) { await run("UPDATE listings SET removed=1, removed_date=?, verify_status='Teyit Bekliyor', last_check=? WHERE id=?", [now, now, String(id)]); fresh.push(r); }
     }
     sendJSON(res, 200, { ok: true, removed: fresh.length });
-    if (fresh.length) notifier.notifyRemoved(fresh).catch(() => {});
-    console.log(`📭 ${fresh.length} ilan yayından kalktı (teyit bekliyor)`);
+    // Sadece telefonu veya detay bilgisi olan kalkanlarda bildirim gönder — telefonsuz+bilgisiz → bildirim yok
+    const notifyable = fresh.filter(r => r.phone || r.description || r.contact_type === 'message');
+    if (notifyable.length) notifier.notifyRemoved(notifyable).catch(() => {});
+    console.log(`📭 ${fresh.length} ilan yayından kalktı (${notifyable.length} bildirim gönderildi, ${fresh.length-notifyable.length} bilgisiz atlandı)`);
     return;
   }
 
@@ -264,7 +266,8 @@ async function handle(req, res) {
     const now = new Date().toISOString();
     for (const r of gone) await run("UPDATE listings SET removed=1, removed_date=?, verify_status='Teyit Bekliyor', last_check=? WHERE id=?", [now, now, String(r.id)]);
     sendJSON(res, 200, { ok: true, checked: dbRows.length, removed: gone.length });
-    if (gone.length && !isQuiet()) notifier.notifyRemoved(gone).catch(() => {});
+    const goneNotify = gone.filter(r => r.phone || r.description || r.contact_type === 'message');
+    if (goneNotify.length && !isQuiet()) notifier.notifyRemoved(goneNotify).catch(() => {});
     console.log(`🔎 reconcile ${district}: ${gone.length} kalktı / ${dbRows.length} aktif`);
     return;
   }

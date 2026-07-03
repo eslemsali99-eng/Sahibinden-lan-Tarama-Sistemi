@@ -252,16 +252,17 @@
         }
         await sleep(rnd(DIST_MIN, DIST_MAX));
       }
-      // 2) YENİ ilanları doğrudan fetch ile zenginleştir (telefon/açıklama/görsel) — arka plan sekme KALDIRILDI
+      // 2) YENİ ilanları ANINDA telefon/detay ile zenginleştir — kaç tane olursa hepsini, cap yok.
+      // İlan gelir gelmez telefon çekilmeli; ayrı algoritma olmamalı — bu adım hem telefon hem yayından kalktı tespiti yapar.
       const freshIds = fresh.map((f) => String(f.id));
       if (fresh.length) {
-        log(`   📞 ${Math.min(fresh.length, 12)} yeni ilan telefonu çekiliyor (doğrudan fetch)...`, '#9cf');
-        await enrichViaFetch(fresh.map(f=>({id:f.id,url:f.url})), 12);
+        log(`   📞 ${fresh.length} yeni ilan telefonu çekiliyor (tamamı, anında)...`, '#9cf');
+        await enrichViaFetch(fresh.map(f=>({id:f.id,url:f.url})), fresh.length); // cap yok, HEPSİ
       }
       // TEK TOPLU bildirim (telefonlar artık çekildi) — sel yok, tek mesajda hepsi telefonuyla
       if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
-      // 3) TELEFON (ÖNCELİK: dolmaya yakın): kalkmadan ÖNCE telefon+detay çek — kalkanlar dolu olsun diye
-      if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(12);
+      // 3) BACKLOG: önceki 1000+ denenmemiş ilan için telefon çek (30/tur → ~3 günde biter)
+      if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await checkBatch(30);
       // 4) KALKAN TESPİTİ: günde 1 kez tam liste ID-diff (detaysız, robust)
       if (Date.now() >= +(localStorage.getItem('bircan_blocked_until') || 0)) await removalSweep();
       log(`✅ tur bitti`, '#0f0');
