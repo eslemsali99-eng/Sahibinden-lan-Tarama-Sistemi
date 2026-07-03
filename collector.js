@@ -261,8 +261,11 @@ async function handle(req, res) {
     const body = await readBody(req); const { district, ids } = JSON.parse(body);
     if (!district || !Array.isArray(ids) || !ids.length) return sendJSON(res, 400, { error: 'district+ids gerekli' });
     const sset = new Set(ids.map(String));
+    // Karacabey'de sadece konut taranıyor ama Bağ/Bahçe+Arsa+Arazi ayrı kategoride —
+    // bunları konut diff'e dahil etme, yanlışlıkla "kalktı" işaretlenmesin.
+    const KRC_SKIP = new Set(['Bağ/Bahçe','Arsa','Arazi']);
     const dbRows = await all("SELECT * FROM listings WHERE district=? AND removed=0 AND is_active=1 AND seller_type='sahibinden'", [district]);
-    const gone = dbRows.filter((r) => !sset.has(String(r.id)));
+    const gone = dbRows.filter((r) => !sset.has(String(r.id)) && !(district === 'Karacabey' && KRC_SKIP.has(r.property_type)));
     const now = new Date().toISOString();
     for (const r of gone) await run("UPDATE listings SET removed=1, removed_date=?, verify_status='Teyit Bekliyor', last_check=? WHERE id=?", [now, now, String(r.id)]);
     sendJSON(res, 200, { ok: true, checked: dbRows.length, removed: gone.length });
@@ -350,6 +353,12 @@ async function handle(req, res) {
     catch { res.writeHead(500); return res.end('portfolio.html yok'); }
   }
 
+  // TEK SEFERLIK: Karacabey Bağ/Bahçe+Arsa yanlışlıkla removed işaretlendi → geri al
+  if (req.method === 'POST' && pathOnly === '/api/restore-karacabey' && authed(req)) {
+    const r = await run("UPDATE listings SET removed=0, removed_date=NULL, verify_status=NULL WHERE district='Karacabey' AND property_type IN ('Bağ/Bahçe','Arsa','Arazi') AND removed=1");
+    console.log(`♻️ Karacabey restore: ${r.rowsAffected} ilan geri alındı`);
+    return sendJSON(res, 200, { restored: r.rowsAffected });
+  }
   if (req.method === 'GET' && pathOnly === '/status') {
     const byType = await all('SELECT seller_type, COUNT(*) c FROM listings GROUP BY seller_type');
     const byDist = await all('SELECT district, COUNT(*) c FROM listings GROUP BY district');
