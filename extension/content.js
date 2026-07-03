@@ -42,6 +42,11 @@
         localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6));
         return;
       }
+      // Yayından kalkmış ilan tespiti (gerçek navigasyonda 404/kalktı sayfası → mark-removed, 'Mesajla' YAZMA)
+      if (/yayından kaldır|yayında olmayan|yayında değil|ilana ulaşılam|ilan bulunamad|kaldırılmış|sona ermiş/i.test(document.body.innerText) || location.href.includes('/404')) {
+        try { await fetch(CFG.collector + '/api/mark-removed', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-token': TOK }, body: JSON.stringify({ ids: [id] }) }); } catch (e) {}
+        return; // contact_type yazma — kalkmış ilan 'mesajla' olarak işaretlenmesin
+      }
       // "Numarayı/Telefonu Göster" butonu varsa tıkla (telefon AJAX ile gelir)
       const btns = [...document.querySelectorAll('button,a,span,div')].filter((e) => /numara(yı)? göster|telefonu göster|cep.*göster|numaray[ıi] g[oö]ster/i.test((e.textContent || '').trim()));
       for (const b of btns.slice(0, 5)) { try { b.click(); } catch (e) {} }
@@ -157,11 +162,13 @@
   const U = (p) => ING.replace('/ingest', p);
   function setBlock() { localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6)); log('🚫 doğrulama/blok — IP dinlensin diye 3 saat beklenecek', '#f55'); }
 
-  // YENİ: doğrudan fetch ile telefon çekme — arka plan sekme yerine mevcut sekmenin oturumu/çerezleri kullanılır.
-  // Arka plan sekmeler 10+ gün boyunca 0 telefon getirdi (Chrome throttle/DataDome); bu yaklaşım liste sayfasıyla
-  // aynı bağlamda çalışır, dolayısıyla DataDome tarafından normal gezinme gibi görünür.
+  // İKİ ADIMLI telefon çekme:
+  // 1) checkOne (hızlı fetch): kalktı mı tespit et + HTML'de kolayca bulunan telefon (JSON-LD vs.)
+  // 2) Aktif ama telefon bulunamadıysa → arka plan tab (captureDetailPhone): "Numarayı Göster" butonuna
+  //    gerçek tıklama → AJAX → telefon gelir. Sahibinden'de telefon AJAX'ın arkasında, HTML'de değil.
   async function enrichViaFetch(items, cap) {
     let done = 0;
+    const needTab = []; // hızlı fetch'ten telefon çıkmadı → tab gerekiyor
     for (const it of (items || []).slice(0, cap)) {
       const url = it.url ? (it.url.startsWith('http') ? it.url : BASE + it.url) : null;
       if (!url) continue;
@@ -169,15 +176,31 @@
       if (r.challenge) { setBlock(); break; }
       if (r.removed) {
         try { await jpost(U('/api/mark-removed'), { ids: [String(it.id)] }); } catch (e) {}
-        log(`   📭 ${it.id} yayından kalktı (fetch tespiti)`, '#fa0');
+        log(`   📭 ${it.id} yayından kalktı`, '#fa0');
         continue;
       }
-      if (r.err) continue;
-      await jpostEarly(ENR, { id: String(it.id), phone: r.phone || null, ownership_type: r.tapu || null,
-        description: r.description || null, images: r.images || [], contact_type: r.contact_type });
-      if (r.phone) log(`   📞 ${it.id}: ${r.phone}`, '#0f0');
-      done++;
-      await sleep(rnd(PAGE_MIN, PAGE_MAX)); // sahibinden'i yormamak için bekleme
+      if (r.err) { needTab.push(it); continue; }
+      if (r.phone) {
+        // Nadir ama oluyor: JSON-LD veya açık HTML'de telefon var → kaydet, tab açmaya gerek yok
+        await jpostEarly(ENR, { id: String(it.id), phone: r.phone, ownership_type: r.tapu || null,
+          description: r.description || null, images: r.images || [], contact_type: 'phone' });
+        log(`   📞 ${it.id}: ${r.phone} (HTML'den)`, '#0f0');
+        done++;
+      } else {
+        // Aktif ilan ama telefon HTML'de yok → buton tıklaması gerek → tab kuyruğuna al
+        needTab.push({ ...it, description: r.description, images: r.images, tapu: r.tapu });
+      }
+      await sleep(rnd(1500, 2500)); // checkOne'lar arası nazik bekleme
+    }
+    // Telefonu HTML'de bulunamayan aktif ilanlar → gerçek navigasyon ile butona tıkla
+    if (needTab.length) {
+      log(`   📞 ${needTab.length} ilan tab ile açılıyor (Numarayı Göster)...`, '#9cf');
+      try {
+        await chrome.runtime.sendMessage({
+          type: 'enrichViaTabs',
+          items: needTab.map(it => ({ id: it.id, url: it.url.startsWith('http') ? it.url : BASE + it.url }))
+        });
+      } catch (e) { log(`   ⚠️ SW mesajı gönderilemedi: ${e.message}`, '#fa0'); }
     }
     return done;
   }
