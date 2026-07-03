@@ -282,6 +282,9 @@ function render(){
   if(MODE==='expiring')r=r.filter(x=>x.days_on_site>=25&&x.days_on_site<=31);
   if(MODE==='portfolio')r=r.filter(x=>x.shared==1);
   if(MODE==='new'){const c=Date.now()-864e5;r=r.filter(x=>x.first_seen&&new Date(x.first_seen).getTime()>=c);}
+  // TEMEL KURAL: henüz telefon denemesi yapılmamış ilanlar gösterilmez.
+  // Telefon var → göster; sahibinden'de 'mesajla iletişim' seçilmiş → göster (✉️ notu ile); hiç denenmemiş → gizle.
+  if(MODE!=='removed') r=r.filter(x=>x.phone || x.contact_type==='message');
   if(QUICK==='phone')r=r.filter(x=>x.phone);
   if(QUICK==='processed')r=r.filter(x=>(x.status||'Yeni')!=='Yeni');
   const by={heat:(a,b)=>heat(b)-heat(a),new:(a,b)=>new Date(b.first_seen||0)-new Date(a.first_seen||0),days_left_asc:(a,b)=>(a.days_left??1e9)-(b.days_left??1e9),price_desc:(a,b)=>(b.price||0)-(a.price||0),price_asc:(a,b)=>(a.price||0)-(b.price||0)};

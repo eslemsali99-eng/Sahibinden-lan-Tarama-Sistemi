@@ -53,9 +53,10 @@ async function maybeMorning() {
     if ((await getMeta('morning_date')) === today) return;
     if (trHour() < 9) return; // 09:00 TR'den önce gönderme
     await setMeta('morning_date', today); // slotu hemen al
-    const pend = await all('SELECT * FROM listings WHERE notify_pending=1 AND removed=0 ORDER BY days_on_site DESC LIMIT 40');
-    if (pend.length) { notifier.notifyMorningNew(pend).catch(() => {}); await run('UPDATE listings SET notify_pending=0 WHERE notify_pending=1'); }
-    const soon = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 28 AND 29 ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
+    const pend = await all("SELECT * FROM listings WHERE notify_pending=1 AND removed=0 AND contact_type IS NOT NULL ORDER BY days_on_site DESC LIMIT 40");
+    if (pend.length) { notifier.notifyMorningNew(pend).catch(() => {}); }
+    await run('UPDATE listings SET notify_pending=0 WHERE notify_pending=1'); // pending bayrağını temizle (telefonsuzlar da temizlenir, bir daha bildirilmez)
+    const soon = await all("SELECT * FROM listings WHERE removed=0 AND is_active=1 AND days_on_site BETWEEN 28 AND 29 AND contact_type IS NOT NULL ORDER BY (phone IS NOT NULL AND phone!='') DESC, days_on_site DESC LIMIT 30");
     if (soon.length) notifier.notifyDigest(soon).catch(() => {});
     console.log(`🌅 Sabah özeti: ${pend.length} gece-yeni, ${soon.length} son-şans`);
   } catch (e) { console.log('morning hata:', e.message); }
@@ -283,12 +284,16 @@ async function handle(req, res) {
         console.log(`⏳ ${pending.length} yeni ilan telefon/mesaj durumu bekleniyor — bildirim sonraya bırakıldı`);
       }
       if (resolved.length) {
+        // TEMEL KURAL: telefon/mesaj durumu BELİRLENMİŞ ilanlar bildirilir.
+        // contact_type='phone' → telefon numarasıyla bildir
+        // contact_type='message' → sahibinden'de telefon yok, mesajla iletişim notu ile bildir
+        // hiç denenmemiş (bu blokta olmaz zaten, 'resolved' içindedir) → bildirim yok
         if (isQuiet()) {
           await batchWrite(resolved.map((r) => ({ sql: 'UPDATE listings SET notify_pending=1 WHERE id=?', args: [r.id] })));
-          console.log(`🌙 sessiz saat: ${resolved.length} yeni ilan sabaha bekletildi`);
+          console.log(`🌙 sessiz saat: ${resolved.length} yeni ilan (${resolved.filter(r=>r.phone).length} telefonlu) sabaha bekletildi`);
         } else {
           notifier.notifyNew(resolved).catch(() => {});
-          console.log(`🔔 anlık bildirim: ${resolved.length} yeni ilan`);
+          console.log(`🔔 anlık bildirim: ${resolved.length} yeni ilan (${resolved.filter(r=>r.phone).length} telefonlu, ${resolved.filter(r=>!r.phone).length} mesajla)`);
         }
       }
     }
@@ -309,8 +314,9 @@ async function handle(req, res) {
     if (row && !row.removed) {
       if (e.notify) notifier.notifyNew([row]).catch(() => {}); // eski tekil bildirim yolu
       else if (row.notify_when_resolved && row.contact_type) {
-        // telefon/mesaj durumu artık netleşti -> bekletilen bildirim şimdi gönderilir
+        // telefon/mesaj durumu netleşti — sadece GERÇEK telefon numarası varsa bildir
         await run('UPDATE listings SET notify_when_resolved=0 WHERE id=?', [String(e.id)]);
+        // telefon VEYA mesajla iletişim → ikisi de bildirilir; sadece "hiç denenmemiş" bildirilmez (o zaten buraya gelmez)
         if (isQuiet()) await run('UPDATE listings SET notify_pending=1 WHERE id=?', [String(e.id)]);
         else notifier.notifyNew([row]).catch(() => {});
       }
