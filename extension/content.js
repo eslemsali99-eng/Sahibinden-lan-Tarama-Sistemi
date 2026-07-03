@@ -184,9 +184,10 @@
 
   // telefonsuz ilanları periyodik kontrol et (hem dolmaya yakın hem yeni eklenenler)
   async function checkBatch(limit) {
-    let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then((r) => r.json()); } catch (e) { return; }
-    list = (list || []).slice(0, limit);
-    if (!list.length) return;
+    let raw; try { raw = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then((r) => r.json()); } catch (e) { return; }
+    if (!Array.isArray(raw)) { log(`🚫 need-check auth hatası — config.js token yanlış! (${JSON.stringify(raw)})`, '#f55'); return; }
+    const list = raw.slice(0, limit);
+    if (!list.length) { log(`   📞 telefon kuyruğu boş`, '#888'); return; }
     log(`📞 telefon çekme: ${list.length} ilan — doğrudan fetch`, '#fa0');
     const done = await enrichViaFetch(list, limit);
     log(`   telefon turu bitti (${done} işlendi)`, '#0f0');
@@ -228,6 +229,12 @@
       const bu = +(localStorage.getItem('bircan_blocked_until') || 0);
       if (Date.now() < bu) { log(`⏸️ blok bekleme — ~${Math.ceil((bu - Date.now()) / 3.6e6)} saat sonra`, '#fa0'); return; }
       log(`🔄 oto tur ${new Date().toLocaleTimeString('tr-TR')}`, '#9cf');
+      // TOKEN KONTROLÜ: Yanlış token her şeyin sessizce başarısız olmasına yol açar
+      if (!TOK) { log('🚫 TOKEN BOŞ! config.js dosyasında token yok — eklentiyi güncelle', '#f55'); return; }
+      try {
+        const hc = await fetch(CFG.collector+'/health').then(r=>r.json());
+        if (!hc.ok) { log('🚫 Sunucuya ulaşılamıyor — Render uyuyor olabilir', '#f55'); return; }
+      } catch(e) { log('🚫 Sunucuya ulaşılamıyor: '+e.message, '#f55'); return; }
       // 1) TARAMA: her ilçe ilk 2 sayfa -> yeni ilan url'leri
       const fresh = [];
       for (const d of DISTRICTS) {
