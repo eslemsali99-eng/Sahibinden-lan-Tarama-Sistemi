@@ -34,7 +34,7 @@ async function enrichViaTabs(items) {
     if (!it || !it.url) continue;
     let tab = null;
     try {
-      tab = await chrome.tabs.create({ url: it.url, active: false }); // arka planda gerçek gezinme (blok yok)
+      tab = await chrome.tabs.create({ url: it.url, active: true }); // active:true — throttle yok, content script tam çalışır, tab kısa süre öne gelir
       await new Promise((resolve) => {
         pendingDetail.set(String(it.id), resolve);
         setTimeout(resolve, 28000); // throttle edilmiş sekme için güvenlik üst sınırı (normalde 'detailDone' ile çok daha erken biter)
