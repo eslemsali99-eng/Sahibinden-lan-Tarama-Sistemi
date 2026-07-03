@@ -47,19 +47,36 @@
         try { await fetch(CFG.collector + '/api/mark-removed', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-token': TOK }, body: JSON.stringify({ ids: [id] }) }); } catch (e) {}
         return; // contact_type yazma — kalkmış ilan 'mesajla' olarak işaretlenmesin
       }
-      // "Numarayı/Telefonu Göster" butonu varsa tıkla (telefon AJAX ile gelir)
-      const btns = [...document.querySelectorAll('button,a,span,div')].filter((e) => /numara(yı)? göster|telefonu göster|cep.*göster|numaray[ıi] g[oö]ster/i.test((e.textContent || '').trim()));
-      for (const b of btns.slice(0, 5)) { try { b.click(); } catch (e) {} }
-      await sleep(3500); // AJAX cevabı için daha uzun bekle
-      let phone = null;
-      // 1) tel: linki (AJAX sonrası DOM'a eklenen en güvenilir)
-      const telA = document.querySelector('a[href^="tel:"]'); if (telA) phone = normPhone(telA.getAttribute('href'));
-      // 2) sahibinden telefon kutucukları (değişen CSS sınıflarına karşı geniş seçici)
-      if (!phone) { const pe = document.querySelector('.pretty-phone-part,.classifiedUserPhone,#phoneList,.phone-line,.megaPhoneBox,[class*="phone"],[class*="Phone"],[class*="telef"],[class*="numara"]'); if (pe) phone = normPhone((pe.textContent.match(/0?\s?[25]\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]); }
-      // 3) JSON-LD / schema.org verisi (SEO için sayfaya gömülü telefon)
-      if (!phone) { for (const s of document.querySelectorAll('script[type="application/ld+json"],script[type="application/json"]')) { try { const txt=s.textContent; const m=txt.match(/"(?:telephone|phone|phoneNumber)"\s*:\s*"([^"]+)"/i); if(m) phone=normPhone(m[1]); if(phone) break; } catch(e){} } }
-      // 4) sayfa genelinde regex (en son çare)
-      if (!phone) phone = normPhone((document.body.innerText.match(/0?\s?[25]\d{2}[\s)\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/) || [])[0]);
+      // telefon çekme: sahibinden'de telefon doğrudan sayfada görünür (buton yok), birden fazla yöntemle ara
+      function extractPhone() {
+        // 1) tel: link href — en güvenilir
+        const telA = document.querySelector('a[href^="tel:"]');
+        if (telA) { const p = normPhone(telA.getAttribute('href')); if (p) return p; }
+        // 2) sahibinden CSS sınıfları (geniş seçici, eski+yeni layout)
+        const pe = document.querySelector('.pretty-phone-part,.classifiedUserPhone,#phoneList,.phone-line,.megaPhoneBox,[class*="phone"],[class*="Phone"],[class*="telef"],[class*="numara"],[class*="contact"],[class*="Contact"]');
+        if (pe) { const p = normPhone((pe.textContent.match(/0?[\s(]*[25]\d{2}[\s().–\-]*\d{3}[\s.–\-]*\d{2}[\s.–\-]*\d{2}/) || [])[0]); if (p) return p; }
+        // 3) Next.js __NEXT_DATA__ (sahibinden React/Next yapısı — telefon burada gömülü olabilir)
+        const nd = document.getElementById('__NEXT_DATA__');
+        if (nd) { try { const txt=nd.textContent; const m=txt.match(/"(?:phone|telephone|phoneNumber|userPhone|mobilePhone|gsm)"\s*:\s*"([^"]{6,15})"/i); if(m){ const p=normPhone(m[1]); if(p) return p; } } catch(e){} }
+        // 4) Tüm script bloklarındaki JSON verisi (JSON-LD vs.)
+        for (const s of document.querySelectorAll('script[type="application/ld+json"],script[type="application/json"],script:not([src])')) {
+          try { const m=s.textContent.match(/"(?:phone|telephone|phoneNumber|userPhone|gsm)"\s*:\s*"([^"]{6,15})"/i); if(m){ const p=normPhone(m[1]); if(p) return p; } } catch(e){}
+        }
+        // 5) Tüm sayfa metni — görünür olan her telefon numarası (en kapsamlı)
+        const bodyText = document.body.innerText || '';
+        const m = bodyText.match(/0?[\s(]*[25]\d{2}[\s().–\-]*\d{3}[\s.–\-]*\d{2}[\s.–\-]*\d{2}/);
+        if (m) { const p = normPhone(m[0]); if (p) return p; }
+        return null;
+      }
+      // Butona tıklama denemesi (varsa — artık genellikle yok ama zarar vermez)
+      const btns = [...document.querySelectorAll('button,a,span,div')].filter((e) => /numara(yı)? göster|telefonu göster|cep.*göster/i.test((e.textContent || '').trim()));
+      for (const b of btns.slice(0, 3)) { try { b.click(); } catch (e) {} }
+      // Telefonu bul: hemen dene, bulamazsan 1.5sn aralıklarla 6sn'ye kadar bekle (React render için)
+      let phone = extractPhone();
+      if (!phone) { await sleep(1500); phone = extractPhone(); }
+      if (!phone) { await sleep(1500); phone = extractPhone(); }
+      if (!phone) { await sleep(1500); phone = extractPhone(); }
+      if (!phone) { await sleep(1500); phone = extractPhone(); } // toplam 6sn bekleme
       const dEl = document.querySelector('#classifiedDescription, .classifiedDescription, .classified-detail-desc');
       const description = dEl ? dEl.innerText.trim().replace(/\n{3,}/g, '\n\n').slice(0, 4000) : null;
       const images = [...new Set([...document.querySelectorAll('img')].map((im) => im.getAttribute('src') || im.getAttribute('data-src') || '').filter((s) => /shbdn\.com\/photos/i.test(s)))].slice(0, 12);
