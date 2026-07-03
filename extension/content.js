@@ -152,14 +152,39 @@
   const U = (p) => ING.replace('/ingest', p);
   function setBlock() { localStorage.setItem('bircan_blocked_until', String(Date.now() + 3 * 3.6e6)); log('🚫 doğrulama/blok — IP dinlensin diye 3 saat beklenecek', '#f55'); }
 
-  // telefonsuz + dolmaya yakın ilanları GERÇEK arka-plan sekmesinde aç -> telefon çekilsin (bloksuz)
+  // YENİ: doğrudan fetch ile telefon çekme — arka plan sekme yerine mevcut sekmenin oturumu/çerezleri kullanılır.
+  // Arka plan sekmeler 10+ gün boyunca 0 telefon getirdi (Chrome throttle/DataDome); bu yaklaşım liste sayfasıyla
+  // aynı bağlamda çalışır, dolayısıyla DataDome tarafından normal gezinme gibi görünür.
+  async function enrichViaFetch(items, cap) {
+    let done = 0;
+    for (const it of (items || []).slice(0, cap)) {
+      const url = it.url ? (it.url.startsWith('http') ? it.url : BASE + it.url) : null;
+      if (!url) continue;
+      const r = await checkOne(url);
+      if (r.challenge) { setBlock(); break; }
+      if (r.removed) {
+        try { await jpost(U('/api/mark-removed'), { ids: [String(it.id)] }); } catch (e) {}
+        log(`   📭 ${it.id} yayından kalktı (fetch tespiti)`, '#fa0');
+        continue;
+      }
+      if (r.err) continue;
+      await jpostEarly(ENR, { id: String(it.id), phone: r.phone || null, ownership_type: r.tapu || null,
+        description: r.description || null, images: r.images || [], contact_type: r.contact_type });
+      if (r.phone) log(`   📞 ${it.id}: ${r.phone}`, '#0f0');
+      done++;
+      await sleep(rnd(PAGE_MIN, PAGE_MAX)); // sahibinden'i yormamak için bekleme
+    }
+    return done;
+  }
+
+  // telefonsuz ilanları periyodik kontrol et (hem dolmaya yakın hem yeni eklenenler)
   async function checkBatch(limit) {
     let list; try { list = await fetch(U('/api/need-check'), { headers: { 'x-token': TOK } }).then((r) => r.json()); } catch (e) { return; }
     list = (list || []).slice(0, limit);
     if (!list.length) return;
-    log(`📞 telefon çekme (dolmaya yakın): ${list.length} ilan — arka sekmeler`, '#fa0');
-    try { await chrome.runtime.sendMessage({ type: 'enrichViaTabs', items: list.map((it) => ({ id: it.id, url: it.url.startsWith('http') ? it.url : BASE + it.url })) }); } catch (e) {}
-    log(`   telefon turu bitti`, '#0f0');
+    log(`📞 telefon çekme: ${list.length} ilan — doğrudan fetch`, '#fa0');
+    const done = await enrichViaFetch(list, limit);
+    log(`   telefon turu bitti (${done} işlendi)`, '#0f0');
   }
 
   // KALKAN TESPİTİ (Fikir 2): tam liste sayfalarındaki ID'leri topla -> sunucuda DB ile eşle.
@@ -215,11 +240,11 @@
         }
         await sleep(rnd(DIST_MIN, DIST_MAX));
       }
-      // 2) YENİ ilanları GERÇEK arka-plan sekmelerinde aç (SW) -> o sayfaların content script'i telefonu çeker (blok yok)
+      // 2) YENİ ilanları doğrudan fetch ile zenginleştir (telefon/açıklama/görsel) — arka plan sekme KALDIRILDI
       const freshIds = fresh.map((f) => String(f.id));
       if (fresh.length) {
-        log(`   📞 ${Math.min(fresh.length, 12)} yeni ilan telefonu çekiliyor (arka sekme, gerçek gezinme)...`, '#9cf');
-        try { await chrome.runtime.sendMessage({ type: 'enrichViaTabs', items: fresh.slice(0, 12).map((f) => ({ id: f.id, url: f.url.startsWith('http') ? f.url : BASE + f.url })) }); } catch (e) {}
+        log(`   📞 ${Math.min(fresh.length, 12)} yeni ilan telefonu çekiliyor (doğrudan fetch)...`, '#9cf');
+        await enrichViaFetch(fresh.map(f=>({id:f.id,url:f.url})), 12);
       }
       // TEK TOPLU bildirim (telefonlar artık çekildi) — sel yok, tek mesajda hepsi telefonuyla
       if (freshIds.length) { try { await jpost(U('/api/notify-fresh'), { ids: freshIds }); } catch (e) {} log(`   🔔 ${freshIds.length} yeni ilan → tek toplu bildirim`, '#0f0'); }
