@@ -261,8 +261,13 @@
     log('   ✅ kalkan taraması bitti', '#0f0');
   }
 
+  // Sistem durduruldu (2026-09-02) — iş artık yürütülmüyor, tarama/telefon çekme kalıcı olarak kapatıldı.
+  // bircan_auto bayrağı ne olursa olsun autoCycle çalışmaz. Geri açmak için bu satırı kaldır.
+  const SYSTEM_STOPPED = true;
+
   let cycleRunning = false; // KİLİT: aynı anda iki tur birden çalışmasın (manuel buton + alarm/önceki tur çakışması)
   async function autoCycle() {
+    if (SYSTEM_STOPPED) { log('🛑 sistem durduruldu — oto tarama kapalı', '#f55'); return; }
     if (cycleRunning) { log('⏭️ önceki tur hâlâ çalışıyor — bu tetikleme atlandı', '#888'); return; }
     cycleRunning = true;
     try {

@@ -109,6 +109,13 @@ async function handle(req, res) {
 
   // --- ingest: yeni ilan + fiyat düşüşü tespiti ---
   if (req.method === 'POST' && pathOnly === '/ingest') {
+    // Sistem durduruldu (2026-09-02) — iş artık yürütülmüyor. Yeni tarama verisi kabul
+    // edilmiyor (eski/güncellenmemiş eklentiler boşuna denemeye devam etse bile). Mevcut
+    // veri (panel/portföy) korunuyor. Geri açmak için bu bloğu kaldır.
+    return sendJSON(res, 200, { ok: true, processed: 0, fresh: 0, drops: 0, freshUrls: [], stopped: true });
+  }
+  /* eski ingest mantığı — sistem durduruldu, kod referans için saklandı, hiçbir zaman çalışmaz
+  if (req.method === 'POST' && pathOnly === '/ingest') {
     const body = await readBody(req);
     const { meta, rows } = JSON.parse(body);
     const recs = [];
@@ -146,6 +153,7 @@ async function handle(req, res) {
     maybeMorning().catch(() => {}); // saatlik ingest'te sabah 09:00 özeti tetiklenir
     return;
   }
+  */
 
   // dashboard
   if (req.method === 'GET' && (pathOnly === '/' || pathOnly.startsWith('/index'))) {

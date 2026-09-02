@@ -3,7 +3,10 @@
 // 2) Telefon için GERÇEK arka-plan sekmesi açma: gerçek gezinme DataDome'u tetiklemez -> telefon gelir
 const CYCLE_MIN = 120; // 2 saatte bir = günde ~12 tur (sürekli aktiflik)
 
-function ensureAlarm() { chrome.alarms.create('cycle', { periodInMinutes: CYCLE_MIN, delayInMinutes: 2 }); }
+// Sistem durduruldu (2026-09-02) — iş artık yürütülmüyor. Zamanlayıcı kapatıldı,
+// yeni sahibinden sekmesi açılmasın diye alarm hiç kurulmuyor. Geri açmak için
+// aşağıdaki clear() satırını create(...) çağrısıyla değiştir (bkz. git geçmişi).
+function ensureAlarm() { chrome.alarms.clear('cycle'); }
 chrome.runtime.onInstalled.addListener(ensureAlarm);
 chrome.runtime.onStartup.addListener(ensureAlarm);
 
